@@ -116,29 +116,30 @@ class Dodecahedron:
     def build_vertices(self):
         phi = 1 + np.sqrt(5)
         phi = phi/2
+        t = np.sqrt(3)
 
         for i in range(0, 2):
             for j in range(0, 2):
                 for k in range(0, 2):
-                    temp = Dot((1 - 2 * i) * self.r, (1 - 2 * j) * self.r, (1 - 2 * k) * self.r)
+                    temp = Dot((1 - 2 * i) * self.r / t, (1 - 2 * j) * self.r / t, (1 - 2 * k) * self.r / t)
                     temp.to_gcs(self.center, self.angle)
                     self.vertices.append(temp)
 
         for i in range(0, 2):
             for j in range(0, 2):
-                temp = Dot(0, (1 - 2 * i) * phi * self.r, (1 - 2 * j) * (1 / phi) * self.r)
+                temp = Dot(0, (1 - 2 * i) * phi * self.r / t, (1 - 2 * j) * (1 / phi) * self.r / t)
                 temp.to_gcs(self.center, self.angle)
                 self.vertices.append(temp)
 
         for i in range(0, 2):
             for j in range(0, 2):
-                temp = Dot((1 - 2 * i) * (1 / phi) * self.r, 0, (1 - 2 * j) * phi * self.r)
+                temp = Dot((1 - 2 * i) * (1 / phi) * self.r / t, 0, (1 - 2 * j) * phi * self.r / t)
                 temp.to_gcs(self.center, self.angle)
                 self.vertices.append(temp)
 
         for i in range(0, 2):
             for j in range(0, 2):
-                temp = Dot((1 - 2 * i) * phi * self.r, (1 - 2 * j) * (1 / phi) * self.r, 0)
+                temp = Dot((1 - 2 * i) * phi * self.r / t, (1 - 2 * j) * (1 / phi) * self.r / t, 0)
                 temp.to_gcs(self.center, self.angle)
                 self.vertices.append(temp)
 
@@ -184,6 +185,8 @@ class Dodecahedron:
             v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
 
             normal = np.cross(v2, v1)
+            normal = normal/np.linalg.norm(normal)
+            print(normal)
             normal = Dot(coords=normal)
             self.normals.append(normal)
 
@@ -193,11 +196,9 @@ class Dodecahedron:
         volume = gmsh.model.geo.add_volume([surface_loop])
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
-        temp_l = dist(self.center, dod.center)
-        if temp_l > (self.r + dod.r):
+        if (self.r + dod.r) < dist(dod.center, self.center):
             return False
         else:
-            return True
             # for n in self.normals:
             #     mini1, maxi1 = interval(self, n)
             #     mini2, maxi2 = interval(dod, n)
@@ -216,13 +217,13 @@ class Dodecahedron:
             #         line2 = j
             #         v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
             #         v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
-            #         n = np.cross(v1, v2)
+            #         n = np.cross(v2, v1)
             #         n = Dot(coords=n)
             #         mini1, maxi1 = interval(self, n)
             #         mini2, maxi2 = interval(dod, n)
             #         if maxi2 < mini1 or maxi1 < mini2:
             #             return False
-            # return True
+            return True
 
 
 def interval(dod: Dodecahedron, n: Dot):
@@ -237,6 +238,7 @@ def interval(dod: Dodecahedron, n: Dot):
     return mini, maxi
 
 
+epsilon = 1
 lol = Dot(4, 0, 0)
 theta = Dot(0, 0, 0)
 alpha = Dot(0.26, 0, 0)
@@ -246,10 +248,10 @@ temp_angle = Dot(is_angle=True)
 
 N = 1
 dods = []
-dod = Dodecahedron(temp_dot, 2, temp_angle, 0)
+dod = Dodecahedron(theta, 2, theta, 0)
 dod.build_mesh()
 dods.append(dod)
-while N < 10:
+while N < 20:
     temp_dot = Dot(border=BORDER)
     temp_angle = Dot(is_angle=True)
 
@@ -273,6 +275,10 @@ while N < 10:
     dods.append(temp_dod)
     temp_dod.build_mesh()
     N = N + 1
+
+dot1 = Dot(1.9352037713964998, 7.8497468106059305, 8.282431824988265)
+dot2 = Dot(4.701173192510357, 3.855622262702063, 7.288245782326774)
+print(dist(dot1, dot2))
 
 # Create the relevant Gmsh data structures
 # from Gmsh model.

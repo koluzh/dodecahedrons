@@ -103,10 +103,12 @@ class Dodecahedron:
         self.num = num
         self.vertices = []
         self.points = []
-        self.build_vertices()
         self.pentagons = []
         self.lines = [[0, 0]]
         self.normals = []
+        self.a = None
+        self.r_m = None
+        self.build_vertices()
 
     def build_mesh(self):
         self.build_points()
@@ -117,6 +119,8 @@ class Dodecahedron:
         phi = 1 + np.sqrt(5)
         phi = phi/2
         t = np.sqrt(3)
+        self.a = self.r / t / phi * 2
+        self.r_m = self.a * phi * phi / 2
 
         for i in range(0, 2):
             for j in range(0, 2):
@@ -196,33 +200,35 @@ class Dodecahedron:
         volume = gmsh.model.geo.add_volume([surface_loop])
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
-        if (self.r + dod.r) < dist(dod.center, self.center):
+        if dist(dod.center, self.center) <= (dod.r_m + self.r_m):
+            return True
+        elif (self.r + dod.r) < dist(dod.center, self.center):
             return False
         else:
-            # for n in self.normals:
-            #     mini1, maxi1 = interval(self, n)
-            #     mini2, maxi2 = interval(dod, n)
-            #     if maxi2 < mini1 or maxi1 < mini2:
-            #         return False
-            #
-            # for n in dod.normals:
-            #     mini1, maxi1 = interval(self, n)
-            #     mini2, maxi2 = interval(dod, n)
-            #     if maxi2 < mini1 or maxi1 < mini2:
-            #         return False
-            #
-            # for i in self.lines:
-            #     for j in dod.lines:
-            #         line1 = i
-            #         line2 = j
-            #         v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
-            #         v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
-            #         n = np.cross(v2, v1)
-            #         n = Dot(coords=n)
-            #         mini1, maxi1 = interval(self, n)
-            #         mini2, maxi2 = interval(dod, n)
-            #         if maxi2 < mini1 or maxi1 < mini2:
-            #             return False
+            for n in self.normals:
+                mini1, maxi1 = interval(self, n)
+                mini2, maxi2 = interval(dod, n)
+                if maxi2 < mini1 or maxi1 < mini2:
+                    return False
+
+            for n in dod.normals:
+                mini1, maxi1 = interval(self, n)
+                mini2, maxi2 = interval(dod, n)
+                if maxi2 < mini1 or maxi1 < mini2:
+                    return False
+
+            for i in self.lines:
+                for j in dod.lines:
+                    line1 = i
+                    line2 = j
+                    v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
+                    v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
+                    n = np.cross(v1, v2)
+                    n = Dot(coords=n)
+                    mini1, maxi1 = interval(self, n)
+                    mini2, maxi2 = interval(dod, n)
+                    if maxi2 < mini1 or maxi1 < mini2:
+                        return False
             return True
 
 
@@ -245,13 +251,15 @@ alpha = Dot(0.26, 0, 0)
 BORDER = Dot(10, 10, 10)
 temp_dot = Dot(border=BORDER)
 temp_angle = Dot(is_angle=True)
+MAX_ATTEMPTS = 10000
 
 N = 1
 dods = []
 dod = Dodecahedron(theta, 2, theta, 0)
 dod.build_mesh()
 dods.append(dod)
-while N < 20:
+attempts = 0
+while N < 25 and attempts < MAX_ATTEMPTS:
     temp_dot = Dot(border=BORDER)
     temp_angle = Dot(is_angle=True)
 
@@ -269,8 +277,11 @@ while N < 20:
             break
 
     if intersects:
+        attempts = attempts + 1
         print("skipped")
         continue
+
+    attempts = 0
 
     dods.append(temp_dod)
     temp_dod.build_mesh()

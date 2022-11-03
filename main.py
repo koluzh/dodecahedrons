@@ -2,9 +2,13 @@ import numpy as np
 import gmsh
 import sys
 import random
+from numba import njit
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 gmsh.initialize()
 
+VOLUMES = []
 
 def rand_f(start: float, stop: float):
     return random.uniform(start, stop)
@@ -190,7 +194,6 @@ class Dodecahedron:
 
             normal = np.cross(v2, v1)
             normal = normal/np.linalg.norm(normal)
-            print(normal)
             normal = Dot(coords=normal)
             self.normals.append(normal)
 
@@ -198,6 +201,7 @@ class Dodecahedron:
             surface = gmsh.model.geo.add_plane_surface([curve_loop])
         surface_loop = gmsh.model.geo.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
         volume = gmsh.model.geo.add_volume([surface_loop])
+        VOLUMES.append(volume)
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
         if dist(dod.center, self.center) <= (dod.r_m + self.r_m):
@@ -206,14 +210,14 @@ class Dodecahedron:
             return False
         else:
             for n in self.normals:
-                mini1, maxi1 = interval(self, n)
-                mini2, maxi2 = interval(dod, n)
+                mini1, maxi1 = w_interval(self, n)
+                mini2, maxi2 = w_interval(dod, n)
                 if maxi2 < mini1 or maxi1 < mini2:
                     return False
 
             for n in dod.normals:
-                mini1, maxi1 = interval(self, n)
-                mini2, maxi2 = interval(dod, n)
+                mini1, maxi1 = w_interval(self, n)
+                mini2, maxi2 = w_interval(dod, n)
                 if maxi2 < mini1 or maxi1 < mini2:
                     return False
 
@@ -225,18 +229,33 @@ class Dodecahedron:
                     v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
                     n = np.cross(v1, v2)
                     n = Dot(coords=n)
-                    mini1, maxi1 = interval(self, n)
-                    mini2, maxi2 = interval(dod, n)
+                    mini1, maxi1 = w_interval(self, n)
+                    mini2, maxi2 = w_interval(dod, n)
                     if maxi2 < mini1 or maxi1 < mini2:
                         return False
             return True
 
 
-def interval(dod: Dodecahedron, n: Dot):
-    mini = np.dot(n.coords, dod.vertices[0].coords)
-    maxi = mini
+def w_interval(dod: Dodecahedron, n: Dot):
+    temp_list = []
     for i in dod.vertices:
-        val = np.dot(np.squeeze(i.coords), np.squeeze(n.coords))
+        temp_list.append(i.coords)
+    dod_coords = np.array([temp_list])
+    for i in dod_coords:
+        i = np.squeeze(i)
+    n_coords = n.coords
+    n_coords = np.squeeze(n_coords)
+    dod_coords = np.squeeze(dod_coords)
+    mini, maxi = interval(dod_coords, n_coords)
+    return mini, maxi
+
+
+@njit()
+def interval(dod_coords: np.ndarray, n: np.ndarray):
+    mini = np.dot(n, dod_coords[0])
+    maxi = mini
+    for i in dod_coords:
+        val = np.dot(n, i)
         if val < mini:
             mini = val
         else:
@@ -253,19 +272,20 @@ temp_dot = Dot(border=BORDER)
 temp_angle = Dot(is_angle=True)
 MAX_ATTEMPTS = 10000
 
+start = time.time()
 N = 1
 dods = []
-dod = Dodecahedron(theta, 2, theta, 0)
-dod.build_mesh()
-dods.append(dod)
+dod0 = Dodecahedron(theta, 2, theta, 0)
+dod0.build_mesh()
+dods.append(dod0)
 attempts = 0
-while N < 25 and attempts < MAX_ATTEMPTS:
+while attempts < MAX_ATTEMPTS:
     temp_dot = Dot(border=BORDER)
     temp_angle = Dot(is_angle=True)
 
-    print(temp_dot.coords)
-    print(temp_angle.coords)
-    print(N)
+    # print(temp_dot.coords)
+    # print(temp_angle.coords)
+    # print(N)
 
     temp_dod = Dodecahedron(temp_dot, 2, temp_angle, N)
 
@@ -278,18 +298,18 @@ while N < 25 and attempts < MAX_ATTEMPTS:
 
     if intersects:
         attempts = attempts + 1
-        print("skipped")
+        # print("skipped")
         continue
 
     attempts = 0
 
-    dods.append(temp_dod)
     temp_dod.build_mesh()
+
+    dods.append(temp_dod)
     N = N + 1
 
-dot1 = Dot(1.9352037713964998, 7.8497468106059305, 8.282431824988265)
-dot2 = Dot(4.701173192510357, 3.855622262702063, 7.288245782326774)
-print(dist(dot1, dot2))
+end = time.time()
+print(end - start)
 
 # Create the relevant Gmsh data structures
 # from Gmsh model.

@@ -4,11 +4,16 @@ import sys
 import random
 from numba import njit
 import time
+# you also need to install scipy 0.16+
+# import intersection as inters
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 
-gmsh.initialize()
+if __name__ == "__main__":
+    gmsh.initialize()
 
 VOLUMES = []
+
 
 def rand_f(start: float, stop: float):
     return random.uniform(start, stop)
@@ -54,6 +59,7 @@ class Dot:
             self.z = rand_f(0, self.border.z)
             self.coords = [self.x, self.y, self.z]
 
+# to be njitted
     def to_gcs(self, center: 'Dot', angle: 'Dot'):
         t = [[1, 0, 0, center.x],
              [0, 1, 0, center.y],
@@ -109,6 +115,7 @@ class Dodecahedron:
         self.points = []
         self.pentagons = []
         self.lines = [[0, 0]]
+        self.queue = []
         self.normals = []
         self.a = None
         self.r_m = None
@@ -175,19 +182,26 @@ class Dodecahedron:
                  [11, 12, -1, 6, 10], [21, -8, 15, 25, 24], [27, 18, 14, -25, 26], [7, 21, 22, 23, - 10],
                  [22, 28, 29, -26, -24], [23, 11, 19, -30, -28], [30, 20, 17, -27, -29]]
 
-        for i in loops:
+        for loop_i in loops:
             line_loops = []
             surfaces = []
-            for j in i:
-                temp_j = j
+            
+            # dots = []
+            # dots.append(self.vertices[self.lines[loop_i[0]][0] - 1])
+
+            for line_i in loop_i:
+                # dots.append(self.vertices[self.lines[line_i][1] - 1])
+                temp_j = line_i
                 if temp_j < 0:
                     temp_j = temp_j - k
                 else:
                     temp_j = temp_j + k
                 line_loops.append(temp_j)
 
-            line1 = self.lines[i[0]]
-            line2 = self.lines[i[1]]
+            # self.pentagons.append(inters.Pentagon(dots))
+
+            line1 = self.lines[loop_i[0]]
+            line2 = self.lines[loop_i[1]]
 
             v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
             v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
@@ -199,6 +213,7 @@ class Dodecahedron:
 
             curve_loop = gmsh.model.geo.add_curve_loop(line_loops)
             surface = gmsh.model.geo.add_plane_surface([curve_loop])
+
         surface_loop = gmsh.model.geo.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
         volume = gmsh.model.geo.add_volume([surface_loop])
         VOLUMES.append(volume)
@@ -209,31 +224,38 @@ class Dodecahedron:
         elif (self.r + dod.r) < dist(dod.center, self.center):
             return False
         else:
-            for n in self.normals:
+            for d_i in self.vertices:
+                if dist(d_i, dod.center) <= dod.r_m:
+                    return True
+            for d_i in dod.vertices:
+                if dist(d_i, self.center) <= self.r_m:
+                    return True
+
+        for n in self.normals:
+            mini1, maxi1 = w_interval(self, n)
+            mini2, maxi2 = w_interval(dod, n)
+            if maxi2 < mini1 or maxi1 < mini2:
+                return False
+
+        for n in dod.normals:
+            mini1, maxi1 = w_interval(self, n)
+            mini2, maxi2 = w_interval(dod, n)
+            if maxi2 < mini1 or maxi1 < mini2:
+                return False
+
+        for i in self.lines:
+            for j in dod.lines:
+                line1 = i
+                line2 = j
+                v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
+                v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
+                n = np.cross(v1, v2)
+                n = Dot(coords=n)
                 mini1, maxi1 = w_interval(self, n)
                 mini2, maxi2 = w_interval(dod, n)
                 if maxi2 < mini1 or maxi1 < mini2:
                     return False
-
-            for n in dod.normals:
-                mini1, maxi1 = w_interval(self, n)
-                mini2, maxi2 = w_interval(dod, n)
-                if maxi2 < mini1 or maxi1 < mini2:
-                    return False
-
-            for i in self.lines:
-                for j in dod.lines:
-                    line1 = i
-                    line2 = j
-                    v1 = dist(self.vertices[line1[0] - 1], self.vertices[line1[1] - 1], True)
-                    v2 = dist(self.vertices[line2[0] - 1], self.vertices[line2[1] - 1], True)
-                    n = np.cross(v1, v2)
-                    n = Dot(coords=n)
-                    mini1, maxi1 = w_interval(self, n)
-                    mini2, maxi2 = w_interval(dod, n)
-                    if maxi2 < mini1 or maxi1 < mini2:
-                        return False
-            return True
+        return True
 
 
 def w_interval(dod: Dodecahedron, n: Dot):
@@ -263,67 +285,66 @@ def interval(dod_coords: np.ndarray, n: np.ndarray):
     return mini, maxi
 
 
-epsilon = 1
-lol = Dot(4, 0, 0)
-theta = Dot(0, 0, 0)
-alpha = Dot(0.26, 0, 0)
-BORDER = Dot(10, 10, 10)
-temp_dot = Dot(border=BORDER)
-temp_angle = Dot(is_angle=True)
-MAX_ATTEMPTS = 10000
-
-start = time.time()
-N = 1
-dods = []
-dod0 = Dodecahedron(theta, 2, theta, 0)
-dod0.build_mesh()
-dods.append(dod0)
-attempts = 0
-while attempts < MAX_ATTEMPTS:
+if __name__ == '__main__':
+    theta = Dot(0, 0, 0)
+    BORDER = Dot(10, 10, 10)
     temp_dot = Dot(border=BORDER)
     temp_angle = Dot(is_angle=True)
+    MAX_ATTEMPTS = 10000
 
-    # print(temp_dot.coords)
-    # print(temp_angle.coords)
-    # print(N)
-
-    temp_dod = Dodecahedron(temp_dot, 2, temp_angle, N)
-
-    intersects = False
-
-    for d in dods:
-        if temp_dod.is_overlapping_with(d):
-            intersects = True
-            break
-
-    if intersects:
-        attempts = attempts + 1
-        # print("skipped")
-        continue
-
+    start = time.time()
+    N = 1
+    dods = []
+    dod0 = Dodecahedron(theta, 2, theta, 0)
+    dod0.build_mesh()
+    dods.append(dod0)
     attempts = 0
+    # parallelize
+    while attempts < MAX_ATTEMPTS:
+        temp_dot = Dot(border=BORDER)
+        temp_angle = Dot(is_angle=True)
 
-    temp_dod.build_mesh()
+        # print(temp_dot.coords)
+        # print(temp_angle.coords)
+        # print(N)
 
-    dods.append(temp_dod)
-    N = N + 1
+        temp_dod = Dodecahedron(temp_dot, 2, temp_angle, N)
 
-end = time.time()
-print(end - start)
+        intersects = False
 
-# Create the relevant Gmsh data structures
-# from Gmsh model.
-gmsh.model.geo.synchronize()
+        for d in dods:
+            if temp_dod.is_overlapping_with(d):
+                intersects = True
+                break
 
-# Generate mesh:
-gmsh.model.mesh.generate()
+        if intersects:
+            attempts = attempts + 1
+            # print("skipped")
+            continue
 
-# Write mesh data:
-gmsh.write("GFG.msh")
+        attempts = 0
 
-# Creates  graphical user interface
-if 'close' not in sys.argv:
-    gmsh.fltk.run()
+        temp_dod.build_mesh()
 
-# It finalizes the Gmsh API
-gmsh.finalize()
+        dods.append(temp_dod)
+        N = N + 1
+
+    end = time.time()
+    print(end - start)
+    print(len(VOLUMES))
+    # Create the relevant Gmsh data structures
+    # from Gmsh model.
+    gmsh.model.geo.synchronize()
+
+    # Generate mesh:
+    gmsh.model.mesh.generate()
+
+    # Write mesh data:
+    gmsh.write("GFG.msh")
+
+    # Creates  graphical user interface
+    if 'close' not in sys.argv:
+        gmsh.fltk.run()
+
+    # It finalizes the Gmsh API
+    gmsh.finalize()

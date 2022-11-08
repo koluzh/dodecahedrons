@@ -1,63 +1,10 @@
 import numpy as np
 from numba import njit
-
-
-class Pentagon:
-    def __init__(self, dots):
-        self.dots = dots
-        self.vectors = []
-        self.build_vectors()
-        self.plane = None
-        self.plane_D = None
-        self.build_plane()
-        self.check_plane()
-
-    def build_vectors(self):
-        for i in range(0, 4):
-            temp_v = self.dots[i + 1].coords - self.dots[i].coords
-            self.vectors.append(temp_v)
-        temp_v = self.dots[0].coords - self.dots[4].coords
-        self.vectors.append(temp_v)
-
-    def build_plane(self):
-        v1 = self.vectors[0]
-        v2 = self.vectors[1]
-        plane = np.cross(np.squeeze(v1), np.squeeze(v2))
-        d = np.dot(plane, self.dots[0].coords)
-        self.plane = plane
-        self.plane_D = d
-
-    def check_plane(self):
-        for d in self.dots:
-            temp_val = np.dot(d.coords, self.plane)
-            if temp_val != d:
-                Exception("dots are not in the same plane")
-
-    def check_dot_on_plane(self, d: Dot):
-        temp_val = np.dot(d.coords, self.plane)
-        if temp_val == self.D:
-            return True
-        else:
-            return False
-
-    def check_line_intersection(self, d0: Dot, d1: Dot, epsilon=1e-6):
-        p0 = d0.coords
-        p1 = d1.coords
-        u = p1 - p0
-        dot = np.dot(self.plane, u)
-
-        if abs(dot) > epsilon:
-            p_co = self.plane * (-self.plane_D / np.linalg.norm(self.plane))
-            w = p0 - p_co
-            fac = -np.dot(self.plane, w) / dot
-            u = u * fac
-            return p0 + u
-
-        return None
-
-
-def rand_f(start: float, stop: float):
-    return random.uniform(start, stop)
+import random
+import gmsh
+import scipy
+# scipy is imported in order to check if its installed because njitted intersection func needs it
+# so make sure that you have scipy installed
 
 
 class Dot:
@@ -138,6 +85,65 @@ class Dot:
         self.coords = np.array([self.x, self.y, self.z])
 
 
+# basically useless
+class Pentagon:
+    def __init__(self, dots):
+        self.dots = dots
+        self.vectors = []
+        self.build_vectors()
+        self.plane = None
+        self.plane_D = None
+        self.build_plane()
+        self.check_plane()
+
+    def build_vectors(self):
+        for i in range(0, 4):
+            temp_v = self.dots[i + 1].coords - self.dots[i].coords
+            self.vectors.append(temp_v)
+        temp_v = self.dots[0].coords - self.dots[4].coords
+        self.vectors.append(temp_v)
+
+    def build_plane(self):
+        v1 = self.vectors[0]
+        v2 = self.vectors[1]
+        plane = np.cross(np.squeeze(v1), np.squeeze(v2))
+        d = np.dot(plane, self.dots[0].coords)
+        self.plane = plane
+        self.plane_D = d
+
+    def check_plane(self):
+        for d in self.dots:
+            temp_val = np.dot(d.coords, self.plane)
+            if temp_val != d:
+                Exception("dots are not in the same plane")
+
+    def check_dot_on_plane(self, d: Dot):
+        temp_val = np.dot(d.coords, self.plane)
+        if temp_val == self.D:
+            return True
+        else:
+            return False
+
+    def check_line_intersection(self, d0: Dot, d1: Dot, epsilon=1e-6):
+        p0 = d0.coords
+        p1 = d1.coords
+        u = p1 - p0
+        dot = np.dot(self.plane, u)
+
+        if abs(dot) > epsilon:
+            p_co = self.plane * (-self.plane_D / np.linalg.norm(self.plane))
+            w = p0 - p_co
+            fac = -np.dot(self.plane, w) / dot
+            u = u * fac
+            return p0 + u
+
+        return None
+
+
+def rand_f(start: float, stop: float):
+    return random.uniform(start, stop)
+
+
 def dist(d1: Dot, d2: Dot, is_v: bool = None):
     v = np.matrix(d1.coords) - np.matrix(d2.coords)
     if is_v is None or not is_v:
@@ -150,6 +156,9 @@ def dist(d1: Dot, d2: Dot, is_v: bool = None):
 class Dodecahedron:
     def __init__(self, center: Dot, r: float, angle: Dot, num: int):
         self.center = center
+        self.volume = None
+        self.surface_loop = None
+        self.volume_val = None
         self.r = r
         self.angle = angle
         self.num = num
@@ -173,6 +182,7 @@ class Dodecahedron:
         phi = phi / 2
         t = np.sqrt(3)
         self.a = self.r / t / phi * 2
+        self.volume_val = np.power(self.a, 3) * (15 + 7 * np.sqrt(5)) / 4
         self.r_m = self.a * phi * phi / 2
 
         for i in range(0, 2):
@@ -257,8 +267,9 @@ class Dodecahedron:
             surface = gmsh.model.geo.add_plane_surface([curve_loop])
 
         surface_loop = gmsh.model.geo.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
-        volume = gmsh.model.geo.add_volume([surface_loop])
-        VOLUMES.append(volume)
+        self.surface_loop = surface_loop
+        #  = gmsh.model.geo.add_volume([surface_loop])
+        # self.volume = volume
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
         if dist(dod.center, self.center) <= (dod.r_m + self.r_m):
@@ -299,6 +310,17 @@ class Dodecahedron:
                     return False
         return True
 
+    def in_box(self, d1: Dot, d2: Dot):
+        for i in range(3):
+            if self.center.coords[i] <= d1.coords[i] or self.center.coords[i] >= d2.coords[i]:
+                return False
+
+        for vert in self.vertices:
+            for i in range(3):
+                if vert.coords[i] <= d1.coords[i] or vert.coords[i] >= d2.coords[i]:
+                    return False
+
+        return True
 
 def w_interval(dod: Dodecahedron, n: Dot):
     temp_list = []
@@ -325,3 +347,42 @@ def interval(dod_coords: np.ndarray, n: np.ndarray):
         else:
             maxi = val
     return mini, maxi
+
+
+def build_box_loop(num: int, s: Dot, d: Dot):
+    line_n = 30 * num
+    point_n = 20 * num
+    surface_n = 12 * num
+    for i in range(2):
+        for j in range(2):
+            for k in range(2):
+                gmsh.model.geo.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
+                                         s.coords[2] + d.coords[2] * k)
+    queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
+    lines = list()
+
+    for q in queue:
+        for i in range(0, len(q) - 1):
+            gmsh.model.geo.add_line(q[i] + point_n, q[i + 1] + point_n)
+            temp_line = [q[i], q[i + 1]]
+            lines.append(temp_line)
+
+    line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
+
+    for loop_i in line_queue:
+        line_loops = []
+
+        for line_i in loop_i:
+            # dots.append(self.vertices[self.lines[line_i][1] - 1])
+            temp_j = line_i
+            if temp_j < 0:
+                temp_j = temp_j - line_n
+            else:
+                temp_j = temp_j + line_n
+            line_loops.append(temp_j)
+
+        curve_loop = gmsh.model.geo.add_curve_loop(line_loops)
+        surface = gmsh.model.geo.add_plane_surface([curve_loop])
+
+    surface_loop = gmsh.model.geo.add_surface_loop(range(1 + surface_n, 7 + surface_n))
+    return surface_loop

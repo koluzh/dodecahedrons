@@ -268,7 +268,7 @@ class Dodecahedron:
 
         surface_loop = gmsh.model.geo.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
         self.surface_loop = surface_loop
-        #  = gmsh.model.geo.add_volume([surface_loop])
+        # volume = gmsh.model.geo.add_volume([surface_loop])
         # self.volume = volume
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
@@ -321,6 +321,7 @@ class Dodecahedron:
                     return False
 
         return True
+
 
 def w_interval(dod: Dodecahedron, n: Dot):
     temp_list = []

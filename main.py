@@ -36,6 +36,8 @@ if __name__ == '__main__':
     SURFACES = list()
     dods.append(dod0)
     total_volume_val = dod0.volume_val
+    SURFACES.append(dod0.surface_loop)
+    # VOLUMES.append(dod0.volume)
     attempts = 0
 
     while attempts < MAX_ATTEMPTS and total_volume_val < target_val:
@@ -67,6 +69,7 @@ if __name__ == '__main__':
         attempts = 0
 
         temp_dod.build_mesh()
+        # VOLUMES.append(temp_dod.volume)
         SURFACES.append(temp_dod.surface_loop)
 
         total_volume_val = total_volume_val + temp_dod.volume_val
@@ -76,14 +79,13 @@ if __name__ == '__main__':
 
     box_loop = geom.build_box_loop(N, theta, BORDER)
 
-    for i in range(len(SURFACES)):
-        holes = gmsh.model.geo.add_physical_group(3, [SURFACES[i]], i + 1)
-
-    box = gmsh.model.geo.add_volume([box_loop], holes)
+    tags = [box_loop]
+    tags.extend(SURFACES)
+    box = gmsh.model.geo.add_volume(tags)
 
     end = time.time()
     print(end - start)
-    print(len(VOLUMES))
+    print(SURFACES[0])
     # Create the relevant Gmsh data structures
     # from Gmsh model.
     gmsh.model.geo.synchronize()

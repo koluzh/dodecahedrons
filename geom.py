@@ -2,6 +2,7 @@ import numpy as np
 from numba import njit
 import random
 import gmsh
+import time
 import scipy
 # scipy is imported in order to check if its installed because njitted intersection func needs it
 # so make sure that you have scipy installed
@@ -119,7 +120,7 @@ class Pentagon:
 
     def check_dot_on_plane(self, d: Dot):
         temp_val = np.dot(d.coords, self.plane)
-        if temp_val == self.D:
+        if temp_val == self.plane_D:
             return True
         else:
             return False
@@ -387,3 +388,111 @@ def build_box_loop(num: int, s: Dot, d: Dot):
 
     surface_loop = gmsh.model.geo.add_surface_loop(range(1 + surface_n, 7 + surface_n))
     return surface_loop
+
+
+def gen_first_dod(first: Dot, second: Dot, angle: Dot, r: float, max_attempts: int = None,
+                  epsilon: float = None):
+    if max_attempts == 0:
+        print("exceeded maximum amount of attempts to build first dod")
+        return
+    if epsilon is None:
+        epsilon = 0
+
+    phi = 1 + np.sqrt(5)
+    phi = phi / 2
+    t = np.sqrt(3)
+    a = r / t / phi * 2
+    r_m = a * phi * phi / 2
+    x = rand_f(first.x + r + epsilon, second.x + r - epsilon)
+    y = rand_f(first.y + r + epsilon, second.y + r - epsilon)
+    z = rand_f(first.z + r + epsilon, second.z + r - epsilon)
+    center = Dot(x, y, z)
+    first_dod = Dodecahedron(center, r, angle, 0)
+    if first_dod.in_box(first, second):
+        return first_dod
+    else:
+        return gen_first_dod(first, second, angle, r, max_attempts)
+
+
+def gen_box(porosity: float, first: Dot, second: Dot, r: float = None,
+            r_min: float = None, r_max: float = None, max_time: float = None, max_time_per_1: float = None,
+            max_attempts: int = None, epsilon: float = None):
+    is_random = False
+
+    if r is None:
+        is_random = True
+    if is_random:
+        r = rand_f(r_min, r_max)
+
+    start = time.time()
+    target_val = (second.x - first.x) * (second.y - first.y) * (second.z - first.z) * porosity
+    attempts = 0
+
+    temp_angle = Dot(is_angle=True)
+    dod0 = gen_first_dod(first, second, temp_angle, r, epsilon=epsilon)
+    dod0.build_mesh()
+    total_volume_val = dod0.volume_val
+    dods = list()
+    dods.append(dod0)
+    surfaces = list()
+    surfaces.append(dod0.surface_loop)
+
+    n = 1
+    previous = 0
+
+    while attempts < max_attempts and total_volume_val < target_val:
+        temp_dot = Dot(border=second)
+        temp_angle = Dot(is_angle=True)
+
+        if is_random:
+            r = rand_f(r_min, r_max)
+
+        temp_dod = Dodecahedron(temp_dot, r, temp_angle, n)
+
+        intersects = False
+
+        if temp_dod.in_box(first, second) is False:
+            intersects = True
+
+        if not intersects:
+            for d in dods:
+                if temp_dod.is_overlapping_with(d):
+                    intersects = True
+                    break
+
+        if intersects:
+            if max_attempts is not None:
+                attempts = attempts + 1
+            continue
+
+        attempts = 0
+
+        temp_dod.build_mesh()
+        surfaces.append(temp_dod.surface_loop)
+
+        total_volume_val = total_volume_val + temp_dod.volume_val
+
+        dods.append(temp_dod)
+        n = n + 1
+        print(str(n) + 'th dod made in:')
+        now = time.time()
+        print('t=' + str(now - start) + 's')
+
+        if max_time_per_1 is not None:
+            if max_time_per_1 < now - previous:
+                print("time per one limit")
+                break
+
+        previous = now
+
+        if max_time is not None:
+            if max_time < now - start:
+                print("total time limit")
+                break
+
+    box_loop = build_box_loop(n, first, second)
+
+    tags = [box_loop]
+    tags.extend(surfaces)
+    box = gmsh.model.geo.add_volume(tags)
+    end = time.time()

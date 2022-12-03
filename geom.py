@@ -417,6 +417,13 @@ def gen_first_dod(first: Dot, second: Dot, angle: Dot, r: float, max_attempts: i
 def gen_box(porosity: float, first: Dot, second: Dot, r: float = None,
             r_min: float = None, r_max: float = None, max_time: float = None, max_time_per_1: float = None,
             max_attempts: int = None, epsilon: float = None):
+    # first and second dots define box
+    # r is radius of circumscribed sphere of dods, it can be None for random value
+    # r_min and r_max are borders for random radius
+    # max_time is optional limit for total time
+    # max_time_per_1 is optional limit for time spent per each dod
+    # both are in seconds
+    # max_attempts is optional limit for attempts per one dod
     is_random = False
 
     if r is None:
@@ -496,3 +503,61 @@ def gen_box(porosity: float, first: Dot, second: Dot, r: float = None,
     tags.extend(surfaces)
     box = gmsh.model.geo.add_volume(tags)
     end = time.time()
+
+
+class Ellipsoid:
+    def __init__(self, center: Dot, a: float, b: float, c: float, angle: Dot = None):
+        self.center = center
+        self.a = a
+        self.b = b
+        self.c = c
+        if angle is None:
+            angle = Dot(0, 0, 0)
+        self.angle = angle
+        self.matrix = None
+        self.build_matrix()
+
+    def build_matrix(self):
+        A = (self.b ** 2) * (self.c ** 2)
+        B = (self.a ** 2) * (self.c ** 2)
+        C = (self.a ** 2) * (self.b ** 2)
+        K = -(self.a ** 2) * (self.b ** 2) * (self.c ** 2)
+        s = np.matrix([[A, 0, 0, 0], [0, B, 0, 0], [0, 0, C, 0], [0, 0, 0, K]])
+        # rn s is matrix defining ellipsoid in cartesian cs
+        x, y, z = 0, 0, 4
+        t = np.matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [x, y, z, 1]])
+        # t is gcs transition matrix
+        alpha = 0
+        beta = np.pi / 2
+        gamma = 0
+        r_x = np.matrix([[1, 0, 0], [0, np.cos(alpha), -np.sin(alpha)], [0, np.sin(alpha), np.cos(alpha)]])
+        r_y = np.matrix([[np.cos(beta), 0, np.sin(beta)], [0, 1, 0], [-np.sin(beta), 0, np.cos(beta)]])
+        r_z = np.matrix([[np.cos(gamma), -np.sin(gamma), 0], [np.sin(gamma), np.cos(gamma), 0], [0, 0, 1]])
+        r = np.dot(r_x, r_y)
+        r = np.dot(r, r_z)
+        # r is rotation matrix
+        temp1 = np.array(r[0, :])
+        temp1 = temp1.ravel()
+        temp1 = np.hstack([temp1, [0]])
+        temp2 = np.array(r[1, :])
+        temp2 = temp2.ravel()
+        temp2 = np.hstack([temp2, [0]])
+        temp3 = np.array(r[2, :])
+        temp3 = temp3.ravel()
+        temp3 = np.hstack([temp3, [0]])
+        r = np.matrix([temp1, temp2, temp3, [0, 0, 0, 1]])
+        s = np.dot(t, s)
+        s = np.dot(s, t.transpose())
+        s = np.dot(r, s)
+        s = np.dot(s, r.transpose())
+        self.matrix = np.matrix(s)
+
+
+def ell_intersection(first: Ellipsoid, second: Ellipsoid):
+    a = first.matrix
+    b = second.matrix
+    a = np.linalg.inv(a)
+    s = np.dot(a, b)
+    eig = np.linalg.eig(s)
+    eigvals = np.linalg.eigvals(s)
+    return eig, eigvals

@@ -40,11 +40,14 @@ if __name__ == '__main__':
     porosity = 0.1
 
     # function that creates box volume with cavities
-    geom.gen_box(porosity, theta, BORDER, r=radius,
-                 r_min=r_min, r_max=r_max, max_time=maximum_time, max_attempts=maximum, epsilon=EPSILON)
+    # geom.gen_box(porosity, theta, BORDER, r=radius,
+    #             r_min=r_min, r_max=r_max, max_time=maximum_time, max_attempts=maximum, epsilon=EPSILON)
+
+    tag = gmsh.model.occ.add_sphere(0, 0, 0, 5, 1)
 
     # from Gmsh model.
     gmsh.model.geo.synchronize()
+    gmsh.model.occ.synchronize()
 
     # Generate mesh:
     gmsh.model.mesh.generate()

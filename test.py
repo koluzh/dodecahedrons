@@ -39,7 +39,9 @@ angle = geom.Dot(0, 0, 0)
 lol_center = geom.Dot(7, 0, 0)
 
 kek = geom.Ellipsoid(origin, 2, 1, 1)
+print("matrix:\n", kek.matrix, '\n')
 lol = geom.Ellipsoid(lol_center, 3, 2, 4)
+print("matrix:\n", lol.matrix, '\n')
 
 ans1, ans2 = geom.ell_intersection(kek, lol)
 

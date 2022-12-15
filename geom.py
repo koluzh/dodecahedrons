@@ -23,9 +23,9 @@ class Dot:
         try:
             if coords is not None:
                 self.coords = coords
-                self.x = self.coords[0, 0]
-                self.y = self.coords[0, 1]
-                self.z = self.coords[0, 2]
+                self.x = self.coords[0]
+                self.y = self.coords[1]
+                self.z = self.coords[2]
 
             elif x is not None and y is not None and z is not None:
                 self.x = x
@@ -527,14 +527,15 @@ class Ellipsoid:
         x, y, z = 0, 0, 4
         t = np.matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [x, y, z, 1]])
         # t is gcs transition matrix
-        alpha = 0
-        beta = np.pi / 2
-        gamma = 0
+        alpha = self.angle.x
+        beta = self.angle.y
+        gamma = self.angle.z
         r_x = np.matrix([[1, 0, 0], [0, np.cos(alpha), -np.sin(alpha)], [0, np.sin(alpha), np.cos(alpha)]])
         r_y = np.matrix([[np.cos(beta), 0, np.sin(beta)], [0, 1, 0], [-np.sin(beta), 0, np.cos(beta)]])
         r_z = np.matrix([[np.cos(gamma), -np.sin(gamma), 0], [np.sin(gamma), np.cos(gamma), 0], [0, 0, 1]])
-        r = np.dot(r_x, r_y)
-        r = np.dot(r, r_z)
+        r = r_x @ r_y
+        r = r @ r_z
+        print('r: \n', r)
         # r is rotation matrix
         temp1 = np.array(r[0, :])
         temp1 = temp1.ravel()
@@ -546,6 +547,7 @@ class Ellipsoid:
         temp3 = temp3.ravel()
         temp3 = np.hstack([temp3, [0]])
         r = np.matrix([temp1, temp2, temp3, [0, 0, 0, 1]])
+        print(r)
         s = np.dot(t, s)
         s = np.dot(s, t.transpose())
         s = np.dot(r, s)
@@ -560,4 +562,4 @@ def ell_intersection(first: Ellipsoid, second: Ellipsoid):
     s = np.dot(a, b)
     eig = np.linalg.eig(s)
     eigvals = np.linalg.eigvals(s)
-    return eig, eigvals
+    return eig

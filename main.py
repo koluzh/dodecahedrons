@@ -46,7 +46,6 @@ if __name__ == '__main__':
     tag = gmsh.model.occ.add_sphere(0, 0, 0, 5, 1)
 
     # from Gmsh model.
-    gmsh.model.geo.synchronize()
     gmsh.model.occ.synchronize()
 
     # Generate mesh:

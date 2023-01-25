@@ -86,61 +86,6 @@ class Dot:
         self.coords = np.array([self.x, self.y, self.z])
 
 
-# basically useless
-class Pentagon:
-    def __init__(self, dots):
-        self.dots = dots
-        self.vectors = []
-        self.build_vectors()
-        self.plane = None
-        self.plane_D = None
-        self.build_plane()
-        self.check_plane()
-
-    def build_vectors(self):
-        for i in range(0, 4):
-            temp_v = self.dots[i + 1].coords - self.dots[i].coords
-            self.vectors.append(temp_v)
-        temp_v = self.dots[0].coords - self.dots[4].coords
-        self.vectors.append(temp_v)
-
-    def build_plane(self):
-        v1 = self.vectors[0]
-        v2 = self.vectors[1]
-        plane = np.cross(np.squeeze(v1), np.squeeze(v2))
-        d = np.dot(plane, self.dots[0].coords)
-        self.plane = plane
-        self.plane_D = d
-
-    def check_plane(self):
-        for d in self.dots:
-            temp_val = np.dot(d.coords, self.plane)
-            if temp_val != d:
-                Exception("dots are not in the same plane")
-
-    def check_dot_on_plane(self, d: Dot):
-        temp_val = np.dot(d.coords, self.plane)
-        if temp_val == self.plane_D:
-            return True
-        else:
-            return False
-
-    def check_line_intersection(self, d0: Dot, d1: Dot, epsilon=1e-6):
-        p0 = d0.coords
-        p1 = d1.coords
-        u = p1 - p0
-        dot = np.dot(self.plane, u)
-
-        if abs(dot) > epsilon:
-            p_co = self.plane * (-self.plane_D / np.linalg.norm(self.plane))
-            w = p0 - p_co
-            fac = -np.dot(self.plane, w) / dot
-            u = u * fac
-            return p0 + u
-
-        return None
-
-
 def rand_f(start: float, stop: float):
     return random.uniform(start, stop)
 
@@ -214,7 +159,8 @@ class Dodecahedron:
     def build_points(self):
         lc = 1e-2
         for i in self.vertices:
-            temp_point = gmsh.model.geo.add_point(i.x, i.y, i.z)
+            temp_point =\
+                gmsh.model.occ.add_point(i.x, i.y, i.z)
             self.points.append(temp_point)
 
     def build_lines(self):
@@ -222,8 +168,9 @@ class Dodecahedron:
                  [13, 3, 11, 7], [3, 18, 17], [18, 4, 14], [11, 12, 4], [12, 8]]
         t = 0
         for q in queue:
-            for i in range(0, len(q) - 1):
-                gmsh.model.geo.add_line(q[i] + self.num * 20, q[i + 1] + self.num * 20)
+            for i in range(0,
+                           len(q) - 1):
+                gmsh.model.occ.add_line(q[i] + self.num * 20, q[i + 1] + self.num * 20)
                 temp_line = [q[i], q[i + 1]]
                 self.lines.append(temp_line)
                 t = t + 1
@@ -261,15 +208,21 @@ class Dodecahedron:
 
             normal = np.cross(v2, v1)
             normal = normal / np.linalg.norm(normal)
+            normal = np.array(normal)
+            normal = normal.squeeze()
             normal = Dot(coords=normal)
             self.normals.append(normal)
 
-            curve_loop = gmsh.model.geo.add_curve_loop(line_loops)
-            surface = gmsh.model.geo.add_plane_surface([curve_loop])
+            curve_loop =\
+                gmsh.model.\
+                    occ.add_curve_loop(line_loops)
+            surface = gmsh.model.occ.add_plane_surface([curve_loop])
 
-        surface_loop = gmsh.model.geo.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
+        surface_loop =\
+            gmsh.model.occ.add_surface_loop(range(1 + 12 * self.num, 13 + 12 * self.num))
         self.surface_loop = surface_loop
-        # volume = gmsh.model.geo.add_volume([surface_loop])
+
+        # volume = gmsh.model.occ.add_volume([surface_loop])
         # self.volume = volume
 
     def is_overlapping_with(self, dod: 'Dodecahedron'):
@@ -357,15 +310,17 @@ def build_box_loop(num: int, s: Dot, d: Dot):
     surface_n = 12 * num
     for i in range(2):
         for j in range(2):
-            for k in range(2):
-                gmsh.model.geo.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
+            for k in range(2)\
+                    :
+                gmsh.model.occ.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
                                          s.coords[2] + d.coords[2] * k)
     queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
     lines = list()
 
     for q in queue:
-        for i in range(0, len(q) - 1):
-            gmsh.model.geo.add_line(q[i] + point_n, q[i + 1] + point_n)
+        for i in range(0,
+                       len(q) - 1):
+            gmsh.model.occ.add_line(q[i] + point_n, q[i + 1] + point_n)
             temp_line = [q[i], q[i + 1]]
             lines.append(temp_line)
 
@@ -383,10 +338,13 @@ def build_box_loop(num: int, s: Dot, d: Dot):
                 temp_j = temp_j + line_n
             line_loops.append(temp_j)
 
-        curve_loop = gmsh.model.geo.add_curve_loop(line_loops)
-        surface = gmsh.model.geo.add_plane_surface([curve_loop])
+        curve_loop =\
+            gmsh.model.\
+                occ.add_curve_loop(line_loops)
+        surface = gmsh.model.occ.add_plane_surface([curve_loop])
 
-    surface_loop = gmsh.model.geo.add_surface_loop(range(1 + surface_n, 7 + surface_n))
+    surface_loop =\
+        gmsh.model.occ.add_surface_loop(range(1 + surface_n, 7 + surface_n))
     return surface_loop
 
 
@@ -501,7 +459,8 @@ def gen_box(porosity: float, first: Dot, second: Dot, r: float = None,
 
     tags = [box_loop]
     tags.extend(surfaces)
-    box = gmsh.model.geo.add_volume(tags)
+
+    box = gmsh.model.occ.add_volume(tags)
     end = time.time()
 
 
@@ -554,12 +513,3 @@ class Ellipsoid:
         s = np.dot(s, r.transpose())
         self.matrix = np.matrix(s)
 
-
-def ell_intersection(first: Ellipsoid, second: Ellipsoid):
-    a = first.matrix
-    b = second.matrix
-    a = np.linalg.inv(a)
-    s = np.dot(a, b)
-    eig = np.linalg.eig(s)
-    eigvals = np.linalg.eigvals(s)
-    return eig

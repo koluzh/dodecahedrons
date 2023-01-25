@@ -31,6 +31,7 @@ class Ellipsoid:
         self.l = l
         self.m = m
         # angles
+        self.angle = angle
         self.alpha = angle.x
         self.beta = angle.y
         self.gamma = angle.z
@@ -42,6 +43,7 @@ class Ellipsoid:
         gmsh.model.occ.add_sphere(self.center.x, self.center.y, self.center.z, self.r, tag=self.n)
         gmsh.model.occ.dilate([(3, self.n)], self.center.x, self.center.y, self.center.z, 1/np.sqrt(self.k),
                               1/np.sqrt(self.l), 1/np.sqrt(self.m))
+        gmsh.model.occ.mesh.set_size(gmsh.model.occ.get_entities(self.n - 2), 0.1)
 
     def get_rotation_matrix(self):
         r_x = np.matrix([[1, 0, 0],
@@ -109,6 +111,23 @@ def create_line(d1: Dot, d2: Dot):
     v = d2.coords - d1.coords
     return Line(d1, Dot(coords=v))
 
+def ell_intersection(e1: Ellipsoid, e2: Ellipsoid):
+    # E1 CENTER MUST BE 0,0,0 I.E.
+    d1 = e1.center
+    d2 = e2.center
+    d1_t = Dot(0, 0, 0)
+    e_temp = Ellipsoid(d1_t, e1.k, e1.l, e1.m, e1.r, e1.angle, -1)
+    d2_t = Dot(coords=np.array(d2.coords - d1.coords))
+    line = create_line(d1_t, d2_t)
+    intersections = line_ellipsoid_intersection(e_temp, line)
+    for i in intersections:
+        i_t = i.coords + d1.coords
+        x, y, z = i_t
+        t = e_temp.k * x ** 2 + e_temp.l * y ** 2 + e_temp.m * z ** 2 - e_temp.r ** 2
+        if t <= 1:
+            return True
+    return False
+
 
 gmsh.initialize()
 
@@ -120,19 +139,13 @@ gmsh.model.occ.add_point(0, 2, 0)
 gmsh.model.occ.add_point(0, (2 + np.sqrt(2)), 0)
 
 x = 2 ** (1/3)
-kek = Ellipsoid(Dot(0, 0, 0), 1, 1, 1, 2, Dot(0, 0, 0), 1)
+kek = Ellipsoid(Dot(0.5, 0, 0), 1, 1, 1, 2, Dot(0, 0, 0), 1)
 kek.create_mesh()
 
 lol = Ellipsoid(Dot(-1, (2 + np.sqrt(2)), 0), 2, 1, 1, 2, Dot(0, 0, 0), 2)
 lol.create_mesh()
 
-lin = create_line(lol.center, kek.center)
-print(lin.p.coords)
-print(lin.d.coords)
-k = line_ellipsoid_intersection(kek, lin)
-
-for x in k:
-    print(x.coords)
+ell_intersection(kek, lol)
 
 
 gmsh.model.occ.synchronize()

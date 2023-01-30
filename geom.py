@@ -4,6 +4,7 @@ import random
 import gmsh
 import time
 import scipy
+from scipy.spatial.transform import Rotation as rot
 # scipy is imported in order to check if its installed because njitted intersection func needs it
 # so make sure that you have scipy installed
 
@@ -310,16 +311,14 @@ def build_box_loop(num: int, s: Dot, d: Dot):
     surface_n = 12 * num
     for i in range(2):
         for j in range(2):
-            for k in range(2)\
-                    :
+            for k in range(2):
                 gmsh.model.occ.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
                                          s.coords[2] + d.coords[2] * k)
     queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
     lines = list()
 
     for q in queue:
-        for i in range(0,
-                       len(q) - 1):
+        for i in range(0, len(q) - 1):
             gmsh.model.occ.add_line(q[i] + point_n, q[i + 1] + point_n)
             temp_line = [q[i], q[i + 1]]
             lines.append(temp_line)
@@ -372,7 +371,7 @@ def gen_first_dod(first: Dot, second: Dot, angle: Dot, r: float, max_attempts: i
         return gen_first_dod(first, second, angle, r, max_attempts)
 
 
-def gen_box(porosity: float, first: Dot, second: Dot, r: float = None,
+def gen_sphere_box(porosity: float, first: Dot, second: Dot, r: float = None,
             r_min: float = None, r_max: float = None, max_time: float = None, max_time_per_1: float = None,
             max_attempts: int = None, epsilon: float = None):
     # first and second dots define box
@@ -478,6 +477,87 @@ class Line:
         return temp_dot
 
 
+class Plane:
+    def __init__(self, d: list[Dot], c: Dot):
+        if len(d) != 4:
+            print('Dot amount in plane is wrong')
+        self.dots_list = d
+        v1 = np.array(d[0].coords - d[1].coords)
+        v2 = np.array(d[2].coords - d[1].coords)
+        self.normal = np.cross(v1, v2)
+        self.normal = self.normal / np.linalg.norm(self.normal)
+        self.d = np.dot(self.normal, self.dots_list[0].coords)
+        self.sign = np.dot(self.normal, c.coords)
+
+    def get_projection(self, dot: Dot):
+        print(dot.coords)
+        d = np.dot(dot.coords - self.dots_list[0].coords, self.normal)
+        if d > 0:
+            q_c = dot.coords - d * self.normal
+        else:
+            q_c = dot.coords + d * self.normal
+        q = Dot(coords=q_c)
+        print(q.coords)
+        return q
+
+
+class Box:
+    def __init__(self, s: Dot, d: Dot):
+        self.s = s
+        self.d = d
+        self.c = Dot(coords=(s.coords + d.coords) / 2)
+        dots = list()
+        for i in range(2):
+            for j in range(2):
+                for k in range(2):
+                    temp_dot = Dot(s.coords[0] + (d.coords[0] - s.coords[0]) * i,
+                                             s.coords[1] + (d.coords[1] - s.coords[1]) * j,
+                                             s.coords[2] + (d.coords[2] - s.coords[2]) * k)
+                    dots.append(temp_dot)
+                    gmsh.model.occ.add_point(s.coords[0] + (d.coords[0] - s.coords[0]) * i,
+                                             s.coords[1] + (d.coords[1] - s.coords[1]) * j,
+                                             s.coords[2] + (d.coords[2] - s.coords[2]) * k)
+        queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
+        plane_nums = [[1, 2, 6, 5], [2, 4, 3, 1], [2, 4, 8, 6], [6, 8, 7, 5], [5, 7, 3, 1], [8, 4, 3, 7]]
+        planes = list()
+        for nums in plane_nums:
+            plane_dots = list()
+            for i in nums:
+                plane_dots.append(dots[i - 1])
+            temp_plane = Plane(plane_dots, self.c)
+            planes.append(temp_plane)
+
+        self.planes = planes
+
+        lines = list()
+
+        for q in queue:
+            for i in range(0, len(q) - 1):
+                gmsh.model.occ.add_line(q[i], q[i + 1])
+                temp_line = [q[i], q[i + 1]]
+                lines.append(temp_line)
+
+        line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
+
+        for loop_i in line_queue:
+            line_loops = []
+
+            for line_i in loop_i:
+                # dots.append(self.vertices[self.lines[line_i][1] - 1])
+                temp_j = line_i
+                if temp_j < 0:
+                    temp_j = temp_j
+                else:
+                    temp_j = temp_j
+                line_loops.append(temp_j)
+
+            curve_loop = gmsh.model.occ.add_curve_loop(line_loops)
+            surface = gmsh.model.occ.add_plane_surface([curve_loop])
+
+        surface_loop = gmsh.model.occ.add_surface_loop(range(1, 7))
+
+
+
 class Ellipsoid:
     # kx^2 + ly^2 + mz^2 - r^2 = 0
     # n is number of ellipsoid needed for gmsh
@@ -496,43 +576,45 @@ class Ellipsoid:
         self.gamma = angle.z
         # number of ellipsoid
         self.n = n
-        self.rot_mat = self.get_rotation_matrix()
+
+        self.a = r / np.sqrt(k)
+        self.b = r / np.sqrt(l)
+        self.c = r / np.sqrt(m)
+        self.volume = self.a * self.b * self.c * np.pi * 4 / 3
 
     def create_mesh(self):
         gmsh.model.occ.add_sphere(self.center.x, self.center.y, self.center.z, self.r, tag=self.n)
-        gmsh.model.occ.dilate([(3, self.n)], self.center.x, self.center.y, self.center.z, 1/np.sqrt(self.k),
-                              1/np.sqrt(self.l), 1/np.sqrt(self.m))
-        gmsh.model.occ.mesh.set_size(gmsh.model.occ.get_entities(self.n - 2), 0.1)
+        gmsh.model.occ.dilate([(3, self.n)], self.center.x, self.center.y, self.center.z, 1 / np.sqrt(self.k),
+                              1 / np.sqrt(self.l), 1 / np.sqrt(self.m))
+        gmsh.model.occ.mesh.set_size(gmsh.model.occ.get_entities(0), 0.1)
+        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+                              1, 0, 0, self.alpha)
+        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+                              0, 1, 0, self.beta)
+        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+                              0, 0, 1, self.gamma)
 
-    def get_rotation_matrix(self):
-        r_x = np.matrix([[1, 0, 0],
-                         [0, np.cos(self.alpha), -np.sin(self.alpha)],
-                         [0, np.sin(self.alpha), np.cos(self.alpha)]])
-
-        r_y = np.matrix([[np.cos(self.beta), 0, np.sin(self.beta)],
-                         [0, 1, 0],
-                         [-np.sin(self.beta), 0, np.cos(self.beta)]])
-
-        r_z = np.matrix([[np.cos(self.gamma), -np.sin(self.gamma), 0],
-                         [np.sin(self.gamma), np.cos(self.gamma), 0],
-                         [0, 0, 1]])
-
-        r = r_x @ r_y
-        r = r @ r_z
-        # r is rotation matrix
-        # bs to extend 3x3 matrix to 4x4 matrix
-        temp1 = np.array(r[0, :])
-        temp1 = temp1.ravel()
-        temp1 = np.hstack([temp1, [0]])
-        temp2 = np.array(r[1, :])
-        temp2 = temp2.ravel()
-        temp2 = np.hstack([temp2, [0]])
-        temp3 = np.array(r[2, :])
-        temp3 = temp3.ravel()
-        temp3 = np.hstack([temp3, [0]])
-        r = np.matrix([temp1, temp2, temp3, [0, 0, 0, 1]])
-        return r
         # yay
+
+    def in_box(self, box: Box):
+        d1 = box.s
+        d2 = box.d
+        for i in range(3):
+            if self.center.coords[i] <= d1.coords[i] or self.center.coords[i] >= d2.coords[i]:
+                return False
+
+        for p in box.planes:
+            temp_dot = p.get_projection(self.center)
+            # print(temp_dot.coords)
+            if d_in_ell(temp_dot, self) < 0:
+                return False
+        return True
+
+
+def get_rotation_matrix(angle: Dot):
+    # print(angle.coords)
+    r = rot.from_euler('xyz', angle.coords)
+    return r.as_matrix()
 
 
 def line_ellipsoid_intersection(e: Ellipsoid, l: Line):
@@ -542,13 +624,13 @@ def line_ellipsoid_intersection(e: Ellipsoid, l: Line):
     b = 2 * e.k * (l.p.x) * l.d.x + 2 * e.l * (l.p.y) * l.d.y\
         + 2 * e.m * (l.p.z) * l.d.z
     c = e.k * (l.p.x) ** 2 + e.l * (l.p.y) ** 2 + e.m * (l.p.z) ** 2 - e.r ** 2
-    print('r', e.r)
-    print('abc', a, b, c)
+    #print('r', e.r)
+    #print('abc', a, b, c)
     if a == 0:
         t = -c/b
         return l.get_dot(t)
     dscrm = b ** 2 - a * c * 4
-    print('d=',dscrm)
+    # print('d=',dscrm)
 
     t = list()
 
@@ -561,8 +643,9 @@ def line_ellipsoid_intersection(e: Ellipsoid, l: Line):
     intersections = list()
 
     for i in t:
-        print('t = ', i)
+        # print('t = ', i)
         intersections.append(l.get_dot(i))
+
     return intersections
 
 
@@ -570,20 +653,188 @@ def create_line(d1: Dot, d2: Dot):
     v = d2.coords - d1.coords
     return Line(d1, Dot(coords=v))
 
+
+def rot_dot(d: Dot, angle: Dot, reverse: bool = None):
+    d2_t = np.array([d.x, d.y, d.z, 1])
+    r_mat = get_rotation_matrix(angle)
+    if reverse is True:
+        r_mat = np.linalg.inv(r_mat)
+    # bs to extend 3x3 matrix to 4x4 matrix
+    r = r_mat
+
+    temp1 = np.array(r[0, :])
+    temp1 = temp1.ravel()
+    temp1 = np.hstack([temp1, [0]])
+    temp2 = np.array(r[1, :])
+    temp2 = temp2.ravel()
+    temp2 = np.hstack([temp2, [0]])
+    temp3 = np.array(r[2, :])
+    temp3 = temp3.ravel()
+    temp3 = np.hstack([temp3, [0]])
+    r = np.matrix([temp1, temp2, temp3, [0, 0, 0, 1]])
+
+    r_mat = r
+    d2_t = d2_t @ r_mat
+    d2_t = np.array([d2_t[0, 0], d2_t[0, 1], d2_t[0, 2]])  # this is so shit
+    d2_t = Dot(coords=d2_t)
+    return d2_t
+
+
+def d_to_ecs(d: Dot, e: Ellipsoid, reverse: bool = None):
+    c = e.center
+    d_c_t = d.coords - c.coords
+    d_t = Dot(coords=d_c_t)
+    d_t_r = rot_dot(d_t, e.angle, reverse)
+    return d_t_r
+
+
+def d_in_ell(d: Dot, e: Ellipsoid):
+    d = d_to_ecs(d, e)
+    x, y, z = d.x, d.y, d.z
+    t = e.k * (x ** 2) + e.l * (y ** 2) + e.m * (z ** 2) - e.r ** 2
+    return t
+
+
 def ell_intersection(e1: Ellipsoid, e2: Ellipsoid):
     # E1 CENTER MUST BE 0,0,0 I.E.
     d1 = e1.center
     d2 = e2.center
     d1_t = Dot(0, 0, 0)
     e_temp = Ellipsoid(d1_t, e1.k, e1.l, e1.m, e1.r, e1.angle, -1)
-    d2_t = Dot(coords=np.array(d2.coords - d1.coords))
+    d2_t = Dot(coords=np.array(np.array(d2.coords) - np.array(d1.coords)))
     line = create_line(d1_t, d2_t)
     intersections = line_ellipsoid_intersection(e_temp, line)
     for i in intersections:
-        i_t = i.coords + d1.coords
+        i_t = i.coords + d1.coords - d2.coords
         x, y, z = i_t
-        t = e_temp.k * x ** 2 + e_temp.l * y ** 2 + e_temp.m * z ** 2 - e_temp.r ** 2
+        t = e2.k * x ** 2 + e2.l * y ** 2 + e2.m * z ** 2 - e2.r ** 2
         if t <= 1:
             return True
     return False
+
+
+def gen_first_ell(box: Box, angle: Dot, r: float, k: float, l: float, m: float, max_attempts: int = None,
+                  epsilon: float = None, n = 0):
+    if max_attempts == 0:
+        print("exceeded maximum amount of attempts to build first ell")
+        return
+    if epsilon is None:
+        epsilon = 0
+
+    first = box.s
+    second = box.d
+
+    x = rand_f(first.x + r + epsilon, second.x + r - epsilon)
+    y = rand_f(first.y + r + epsilon, second.y + r - epsilon)
+    z = rand_f(first.z + r + epsilon, second.z + r - epsilon)
+
+    # print(x, y, z)
+
+    center = Dot(x, y, z)
+    first_ell = Ellipsoid(center, k, l, m, r, angle, n)
+    ###
+    # first_ell.create_mesh()
+    ###
+    if first_ell.in_box(box):
+        return first_ell
+    else:
+        if max_attempts is not None:
+            max_attempts = max_attempts - 1
+        return gen_first_ell(box, angle, r, k, l, m, max_attempts)
+
+
+def gen_ell_box(porosity: float, first: Dot, second: Dot, k: float = None,
+                l: float = None, m: float = None, r: float = None, k_min: float = None,
+                k_max: float = None, r_min: float = None, r_max: float = None, max_time: float = None,
+                max_time_per_1: float = None, max_attempts: int = None, epsilon: float = None):
+    # first and second dots define box
+    # r is radius of circumscribed sphere of dods, it can be None for random value
+    # r_min and r_max are borders for random radius
+    # max_time is optional limit for total time
+    # max_time_per_1 is optional limit for time spent per each dod
+    # both are in seconds
+    # max_attempts is optional limit for attempts per one dod
+    is_random = False
+
+    if r is None:
+        is_random = True
+    if is_random:
+        r = rand_f(r_min, r_max)
+        k = rand_f(k_min, k_max)
+        l = rand_f(k_min, k_max)
+        m = rand_f(k_min, k_max)
+
+    start = time.time()
+    target_val = (second.x - first.x) * (second.y - first.y) * (second.z - first.z) * porosity
+    attempts = 0
+
+    box = Box(first, second)
+
+    temp_angle = Dot(is_angle=True)
+    ell0 = gen_first_ell(box, temp_angle, r, k, l, m, max_attempts, epsilon)
+
+    if ell0 is None:
+        return
+
+    ell0.create_mesh()
+    total_volume_val = ell0.volume
+    ells = list()
+    ells.append(ell0)
+
+    n = 1
+    previous = 0
+
+    while attempts < max_attempts and total_volume_val < target_val:
+        temp_dot = Dot(border=second)
+        temp_angle = Dot(is_angle=True)
+
+        if is_random:
+            r = rand_f(r_min, r_max)
+            k = rand_f(k_min, k_max)
+            l = rand_f(k_min, k_max)
+            m = rand_f(k_min, k_max)
+
+        temp_ell = Ellipsoid(temp_dot, k, l, m, r, temp_angle, n)
+
+        intersects = False
+
+        if temp_ell.in_box(box) is False:
+            intersects = True
+
+        if not intersects:
+            for e in ells:
+                if ell_intersection(temp_ell, e):
+                    intersects = True
+                    break
+
+        if intersects:
+            if max_attempts is not None:
+                attempts = attempts + 1
+            continue
+
+        attempts = 0
+
+        temp_ell.create_mesh()
+
+        total_volume_val = total_volume_val + temp_ell.volume
+
+        ells.append(temp_ell)
+        n = n + 1
+        print(str(n) + 'th ell made in:')
+        now = time.time()
+        print('t=' + str(now - start) + 's')
+
+        if max_time_per_1 is not None:
+            if max_time_per_1 < now - previous:
+                print("time per one limit")
+                break
+
+        previous = now
+
+        if max_time is not None:
+            if max_time < now - start:
+                print("total time limit")
+                break
+
+    end = time.time()
 

@@ -1,6 +1,8 @@
 import gmsh
 import sys
 import geom
+import numpy as np
+import time
 
 
 if __name__ == '__main__':
@@ -43,7 +45,15 @@ if __name__ == '__main__':
     # geom.gen_box(porosity, theta, BORDER, r=radius,
     #             r_min=r_min, r_max=r_max, max_time=maximum_time, max_attempts=maximum, epsilon=EPSILON)
 
-    tag = gmsh.model.occ.add_sphere(0, 0, 0, 5, 1)
+    #tag = gmsh.model.occ.add_sphere(0, 0, 0, 5, 1)
+
+
+    start = time.time()
+    k = np.poly1d([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    k = k.roots
+    print(k)
+    end = time.time()
+    print('time', end - start)
 
     # from Gmsh model.
     gmsh.model.occ.synchronize()

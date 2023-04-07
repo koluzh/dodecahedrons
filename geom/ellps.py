@@ -1,10 +1,11 @@
-from __init__ import *
+from geom.core import *
+import time
 
 
 class Ellipsoid:
     # kx^2 + ly^2 + mz^2 - r^2 = 0
     # n is number of ellipsoid needed for gmsh
-    def __init__(self, center: Dot, k: float, l: float, m: float, r: float, angle: Dot, n: int):
+    def __init__(self, center: Dot, k: float, l: float, m: float, r: float, angle: Dot, num: int):
         self.center = center
         # radius
         self.r = r
@@ -18,7 +19,7 @@ class Ellipsoid:
         self.beta = angle.y
         self.gamma = angle.z
         # number of ellipsoid
-        self.n = n
+        self.num = num
 
         self.a = r / np.sqrt(k)
         self.b = r / np.sqrt(l)
@@ -28,15 +29,15 @@ class Ellipsoid:
         self.info = [self.center.coords, klm, self.angle.coords, self.r]
 
     def create_mesh(self):
-        gmsh.model.occ.add_sphere(self.center.x, self.center.y, self.center.z, self.r, tag=self.n)
-        gmsh.model.occ.dilate([(3, self.n)], self.center.x, self.center.y, self.center.z, 1 / np.sqrt(self.k),
+        gmsh.model.occ.add_sphere(self.center.x, self.center.y, self.center.z, self.r, tag=self.num)
+        gmsh.model.occ.dilate([(3, self.num)], self.center.x, self.center.y, self.center.z, 1 / np.sqrt(self.k),
                               1 / np.sqrt(self.l), 1 / np.sqrt(self.m))
         gmsh.model.occ.mesh.set_size(gmsh.model.occ.get_entities(0), 0.5)
-        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+        gmsh.model.occ.rotate([(3, self.num)], self.center.x, self.center.y, self.center.z,
                               1, 0, 0, self.alpha)
-        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+        gmsh.model.occ.rotate([(3, self.num)], self.center.x, self.center.y, self.center.z,
                               0, 1, 0, self.beta)
-        gmsh.model.occ.rotate([(3, self.n)], self.center.x, self.center.y, self.center.z,
+        gmsh.model.occ.rotate([(3, self.num)], self.center.x, self.center.y, self.center.z,
                               0, 0, 1, self.gamma)
 
         # yay
@@ -62,15 +63,9 @@ class Ellipsoid:
         return True
 
     def print_info(self):
-        print(self.n, 'th ell center, klm, angle, r')
+        print(self.num, 'th ell center, klm, angle, r')
         for i in self.info:
             print(i)
-
-
-def get_rotation_matrix(angle: Dot):
-    # print(angle.coords)
-    r = rot.from_euler('xyz', angle.coords)
-    return r.as_matrix()
 
 
 def line_ellipsoid_intersection(e: Ellipsoid, l: Line):

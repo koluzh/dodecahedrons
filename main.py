@@ -1,6 +1,8 @@
 import gmsh
 import sys
 import geom
+from geom.core import *
+import geom.dods
 import numpy as np
 import time
 
@@ -15,8 +17,8 @@ if __name__ == '__main__':
 
     # two dots defining box
     # might not work if theta is not (0,0,0)
-    theta = geom.Dot(0, 0, 0)
-    BORDER = geom.Dot(10, 15, 20)
+    theta = Dot(0, 0, 0)
+    BORDER = Dot(10, 15, 20)
 
     # maximum amount of attempts per 1 dod, after which gen_box will jump to creating box volume, can be None
     maximum = 10000
@@ -38,20 +40,14 @@ if __name__ == '__main__':
     r_max = None
 
     filename = "GFG.msh"
-
-    porosity = 0.1
+    start = time.time()
 
     # function that creates box volume with cavities
-    # geom.gen_box(porosity, theta, BORDER, r=radius,
-    #             r_min=r_min, r_max=r_max, max_time=maximum_time, max_attempts=maximum, epsilon=EPSILON)
 
-    #tag = gmsh.model.occ.add_sphere(0, 0, 0, 5, 1)
+    kek = Box(Dot(0, 0, 0), Dot(10, 10, 10))
 
+    # geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100000)
 
-    start = time.time()
-    k = np.poly1d([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
-    k = k.roots
-    print(k)
     end = time.time()
     print('time', end - start)
 

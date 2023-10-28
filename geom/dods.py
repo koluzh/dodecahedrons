@@ -1,3 +1,5 @@
+import gmsh
+
 from geom.core import *
 import numpy as np
 import numba
@@ -201,7 +203,7 @@ def w_interval(dod: Dodecahedron, n: Dot):
     return mini, maxi
 
 
-@njit()
+@njit
 def interval(dod_coords: np.ndarray, n: np.ndarray):
     mini = np.dot(n, dod_coords[0])
     maxi = mini
@@ -366,3 +368,8 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
 
     box = gmsh.model.occ.add_volume(tags)
     end = time.time()
+
+if __name__ == '__main__':
+    gmsh.initialize()
+    gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), r_min=0.5, r_max=2, max_time_per_1=60, max_attempts=100000)
+    gmsh.finalize()

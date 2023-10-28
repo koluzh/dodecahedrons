@@ -23,5 +23,6 @@ class Cylinder:
         dx, dy, dz = Dot(coords=self.v.coords * self.h).as_list()
         gmsh.model.occ.add_cylinder(x, y, z, dx, dy, dz, self.r, self.n)
 
+
 def cyl_intersection(c1: Cylinder, c2: Cylinder) -> bool:
     pass

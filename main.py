@@ -43,10 +43,10 @@ if __name__ == '__main__':
     start = time.time()
 
     # function that creates box volume with cavities
+    #
+    # kek = Box(Dot(0, 0, 0), Dot(10, 10, 10))
 
-    kek = Box(Dot(0, 0, 0), Dot(10, 10, 10))
-
-    # geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100000)
+    geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100000)
 
     end = time.time()
     print('time', end - start)

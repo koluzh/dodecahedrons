@@ -47,19 +47,20 @@ class Dot:
 
     # to be njitted
     def to_gcs(self, center: 'Dot', angle: 'Dot'):
+        # needed to convert coordinates to gcs from local coordinate system
         t = [[1, 0, 0, center.x],
              [0, 1, 0, center.y],
              [0, 0, 1, center.z],
              [0, 0, 0, 1]]
         t = np.matrix(t, float)
 
-        r1 = [[np.cos(angle.z), np.sin(angle.z), 0],
+        r1 = [[np.cos(angle.z),  np.sin(angle.z),  0],
               [-np.sin(angle.z), np.cos(angle.z), 0],
-              [0, 0, 1]]
+              [0,                0,                1]]
         r1 = np.array(r1)
 
-        r2 = [[np.cos(angle.y), 0, np.sin(angle.y)],
-              [0, 1, 0],
+        r2 = [[np.cos(angle.y),  0, np.sin(angle.y)],
+              [0,                1, 0],
               [-np.sin(angle.y), 0, np.cos(angle.y)]]
         r2 = np.array(r2)
 
@@ -95,7 +96,7 @@ def rand_f(start: float, stop: float):
 
 def dist(d1: Dot, d2: Dot, is_v: bool = None):
     v = np.matrix(d1.coords) - np.matrix(d2.coords)
-    if is_v is None or not is_v:
+    if not is_v:
         length = np.linalg.norm(v)
         return length
     elif is_v:

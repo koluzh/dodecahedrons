@@ -31,7 +31,7 @@ if __name__ == '__main__':
     # after which gen_box will jump to creating box volume, can be None
     max_time_per_one = 60
 
-    # radius of circumscribed sphere of dodecahedrons to be built
+    # radius of circumscribed sphere of dodecahedra to be built
     # can be None
     radius = 2
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #
     # kek = Box(Dot(0, 0, 0), Dot(10, 10, 10))
 
-    geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100000)
+    geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100_000)
 
     end = time.time()
     print('time', end - start)

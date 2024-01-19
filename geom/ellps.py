@@ -72,19 +72,12 @@ class Ellipsoid:
             print(i)
 
     def get_matrix(self) -> np.matrix:
-        A = self.c ** 2 * self.b ** 2
-        B = self.a ** 2 * self.c ** 2
-        C = self.a ** 2 * self.b ** 2
-        K = -1 * self.a ** 2 * self.b ** 2 * self.c ** 2
-        init_mat = np.matrix(f"{A} 0 0 0; 0 {B} 0 0; 0 0 {C} 0; 0 0 0 {K}")
-        rotated_matrix = init_mat @ get_rotation_matrix_4(self.angle)
-        translation_matrix = np.matrix(f"1 0 0 {-self.center.x}; 0 1 0 {-self.center.y}; 0 0 1 {-self.center.z}; 0 0 0 1")
-        # print(init_mat, '\n')
-        # print(f"ell {self.num}")
-        # print(get_rotation_matrix_4(self.angle), '\n')
-        # print(translation_matrix, '\n')
-        # print(translation_matrix.T, '\n')
-        TRS = translation_matrix @ rotated_matrix @ translation_matrix.T
+        A = 1 / self.a ** 2
+        B = 1 / self.b ** 2
+        C = 1 / self.c ** 2
+        init_mat = np.matrix(f"{A} 0 0; 0 {B} 0; 0 0 {C}")
+        translation_mat = np.matrix(f"1 0 0 {-self.center.x}; 0 1 0 {-self.center.y}; 0 0 1 {-self.center.z}; 0 0 0 1")
+        TRS =get_rotation_matrix(self.angle) @ init_mat @ get_rotation_matrix(self.angle).T
         return TRS
 
 
@@ -101,9 +94,9 @@ def get_rotation_matrix_4(d: Dot) -> np.matrix:
     temp3 = temp3.ravel()
     temp3 = np.hstack([temp3, [0]])
     r = np.matrix([temp1, temp2, temp3, [0, 0, 0, 1]])
-    # print(r)
     r_mat = r
     return r_mat
+
 
 def rot_dot(d: Dot, angle: Dot, reverse: bool = None) -> Dot:
     d2_t = np.array([d.x, d.y, d.z, 1])
@@ -123,11 +116,63 @@ def d_to_ecs(d: Dot, e: Ellipsoid, reverse: bool = None):
     return d_t_r
 
 
-def d_in_ell(d: Dot, e: Ellipsoid):
+def d_in_ell(d: Dot, e: Ellipsoid) -> bool:
     d = d_to_ecs(d, e)
     x, y, z = d.x, d.y, d.z
     t = e.k * (x ** 2) + e.l * (y ** 2) + e.m * (z ** 2) - e.r ** 2
-    return t
+    if t <= 1:
+        result = True
+    else:
+        result = False
+    return result
 
-def ell_2_ell(e1: Ellipsoid, e2: Ellipsoid) -> bool:
-    pass
+def ell_2_ell(E1: Ellipsoid, E2: Ellipsoid) -> bool:
+    ainv = np.linalg.inv(E1.matrix)
+    b = E2.matrix
+    m = ainv @ b
+    eigvals, eigvecs = np.linalg.eig(m)
+    print(eigvals)
+    print()
+    print(eigvecs)
+    v1_i = None
+    v2_i = None
+    for i, e1 in enumerate(eigvals):
+        for j, e2 in enumerate(eigvals):
+            if e1 == e2:
+                v1_i = i
+                v2_i = j
+                break
+            elif (e1 * e2).imag == 0 and e1.imag != 0 and e2.imag != 0:
+                v1_i = i
+                v2_i = j
+                break
+    if any([v1_i is None, v2_i is None]):
+        raise Exception("admissable eigenvalues not found")
+    if eigvals[v1_i] < 0 and eigvals[v2_i] < 0:
+        result = False
+    else:
+        result = True
+    return result
+    # eigvecs = [eigvecs[v1_i], eigvecs[v2_i]]
+    # eigvecs_normalized = []
+    # for v in eigvecs:
+    #     new_v = np.squeeze(np.asarray(v))
+    #     normalized_v = [x / new_v[3] if new_v[3] == 1 else x for x in new_v]
+    #     eigvecs_normalized.append(normalized_v)
+    #
+    # dots_to_check = []
+    # for v in eigvecs_normalized:
+    #     coords = np.array([x.real for x in v])
+    #     # print(coords)
+    #     d = Dot(coords=coords)
+    #     dots_to_check.l(d)
+    #
+    # print('result: ')
+    # print("eigvecs")
+    # print(eigvecs)
+    # print("eigvecs_norm")
+    # print(eigvecs_normalized)
+    # for d in dots_to_check:
+    #     if d_in_ell(d, E1) and d_in_ell(d, E2):
+    #         return True
+    # return False

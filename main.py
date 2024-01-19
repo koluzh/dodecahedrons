@@ -39,14 +39,14 @@ if __name__ == '__main__':
     r_min = None
     r_max = None
 
-    filename = "GFG.msh"
+    filename = "kek.msh"
     start = time.time()
 
     # function that creates box volume with cavities
     #
     # kek = Box(Dot(0, 0, 0), Dot(10, 10, 10))
 
-    geom.dods.gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), 2, max_attempts=100_000)
+    geom.dods.gen_dod_box(0.3, Dot(0, 0, 0), Dot(5, 5, 5), r_min=0.9, r_max=1, max_attempts=10_000)
 
     end = time.time()
     print('time', end - start)
@@ -59,6 +59,7 @@ if __name__ == '__main__':
 
     # Write mesh data:
     gmsh.write(filename)
+    print("saved")
 
     # Creates  graphical user interface
     if 'close' not in sys.argv:

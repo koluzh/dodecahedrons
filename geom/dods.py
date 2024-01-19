@@ -299,7 +299,7 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
     target_val = (second.x - first.x) * (second.y - first.y) * (second.z - first.z) * porosity
     attempts = 0
 
-    temp_angle = Dot(is_angle=True)
+    temp_angle = Dot(rand_f(0, np.pi/4), rand_f(0, np.pi/4), rand_f(0, np.pi/4))
     dod0 = gen_first_dod(first, second, temp_angle, r, epsilon=epsilon)
     dod0.build_mesh()
     total_volume_val = dod0.volume_val
@@ -312,13 +312,14 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
     previous = 0
 
     while attempts < max_attempts and total_volume_val < target_val:
-        temp_dot = Dot(border=second)
-        temp_angle = Dot(is_angle=True)
+        temp_dot = Dot(rand_f(0, second.x), rand_f(0, second.y), rand_f(0, second.z))
+        temp_angle = Dot(rand_f(0, np.pi/4),rand_f(0, np.pi/4),rand_f(0, np.pi/4))
 
         if is_random:
             r = rand_f(r_min, r_max)
 
         temp_dod = Dodecahedron(temp_dot, r, temp_angle, n)
+        print(temp_dod.center.coords)
 
         intersects = False
 
@@ -369,7 +370,8 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
     box = gmsh.model.occ.add_volume(tags)
     end = time.time()
 
+
 if __name__ == '__main__':
     gmsh.initialize()
-    gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), r_min=0.5, r_max=2, max_time_per_1=60, max_attempts=100000)
+    gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), r_min=0.5, r_max=2, max_attempts=100000)
     gmsh.finalize()

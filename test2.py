@@ -16,7 +16,8 @@ gmsh.initialize()
 # q = box.planes[4].get_projection(box.c)
 # gmsh.model.occ.add_point(q[0], q[1], q[2])
 
-geom.ellps.gen_ell_box(0.25, dot1, dot2, k_min=1, k_max=4, r_min=2, r_max=2, max_attempts=10000, epsilon=0.1, testing=False)
+# geom.ellps.gen_ell_box(0.25, dot1, dot2, k_min=1, k_max=4, r_min=2, r_max=2, max_attempts=10000, epsilon=0.1, testing=False)
+
 
 
 gmsh.model.occ.synchronize()

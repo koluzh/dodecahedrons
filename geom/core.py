@@ -2,48 +2,64 @@ import numpy as np
 import gmsh
 import random
 from scipy.spatial.transform import Rotation as rot
-
+from typing import Union
 
 class Dot:
-    def __init__(self, x: float = None, y: float = None, z: float = None, coords: np.array = None,
-                 is_angle: bool = None,
-                 border: "Dot" = None):
+    def __init__(self, x: float = None, y: float = None, z: float = None,
+                 coords: np.ndarray = None):
+        if not any(i is None for i in [x, y, z]):
+            self._x = x
+            self._y = y
+            self._z = z
+            self._coords = np.array([x, y, z])
+        elif coords is not None:
+            self.check_vector(coords)
+            self._coords = np.squeeze(np.asarray(coords))[:3]
+            self._x = coords[0]
+            self._y = coords[1]
+            self._z = coords[2]
 
-        self.border = border
+    def check_vector(self, coords: np.ndarray) -> None:
+        if not isinstance(coords, np.ndarray):
+            raise Exception("not numpy array")
+        if coords.size < 3 or coords.size > 4:
+            raise Exception("incorrect size of vector")
 
-        if is_angle is None:
-            self.is_angle = False
-        else:
-            self.is_angle = is_angle
+    @property
+    def x(self):
+        return self._x
 
-        try:
-            if coords is not None:
-                self.coords = np.array(coords)
-                self.x = self.coords[0]
-                self.y = self.coords[1]
-                self.z = self.coords[2]
+    @property
+    def y(self):
+        return self._y
 
-            elif x is not None and y is not None and z is not None:
-                self.x = x
-                self.y = y
-                self.z = z
-                self.coords = np.array([x, y, z])
-            else:
-                self.gen_dot()
-        except ValueError:
-            print("incorrect arguments")
+    @property
+    def z(self):
+        return self._z
 
-    def gen_dot(self):
-        if self.is_angle:
-            self.x = rand_f(0, np.pi / 2)
-            self.y = rand_f(0, np.pi / 2)
-            self.z = rand_f(0, np.pi / 2)
-            self.coords = [self.x, self.y, self.z]
-        else:
-            self.x = rand_f(0, self.border.x)
-            self.y = rand_f(0, self.border.y)
-            self.z = rand_f(0, self.border.z)
-            self.coords = [self.x, self.y, self.z]
+    @x.setter
+    def x(self, value: float):
+        self._x = value
+        self.coords[0] = value
+
+    @y.setter
+    def y(self, value: float):
+        self._y = value
+        self.coords[1] = value
+
+    @z.setter
+    def z(self, value: float):
+        self._z = value
+        self.coords[2] = value
+
+    @property
+    def coords(self):
+        return self._coords
+
+    @coords.setter
+    def coords(self, value: np.array):
+        self.check_vector(value)
+        self._coords = np.squeeze(np.asarray(value))[:3]
 
     # to be njitted
     def to_gcs(self, center: 'Dot', angle: 'Dot'):
@@ -75,11 +91,11 @@ class Dot:
         self.coords = self.coords @ r
 
         self.coords = np.array([self.coords[0], self.coords[1], self.coords[2], 1])
-        self.coords = t @ self.coords
+        self.coords = t @ np.append(self.coords, [1])
 
-        self.x = self.coords[0, 0]
-        self.y = self.coords[0, 1]
-        self.z = self.coords[0, 2]
+        self.x = self.coords[0]
+        self.y = self.coords[1]
+        self.z = self.coords[2]
         self.coords = np.array([self.x, self.y, self.z])
 
     def as_list(self):
@@ -255,3 +271,6 @@ class Plane:
         # print(q.coords)
         return q
 
+if __name__ == '__main__':
+    d1 = Dot(1, 2, 3)
+    d2 = Dot(2, 2, 2)

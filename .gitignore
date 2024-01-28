@@ -1,3 +1,6 @@
 
 xu2011.pdf
 .idea/aws.xml
+*.iml
+*.xml
+*.pyc

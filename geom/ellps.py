@@ -1,8 +1,12 @@
+import gmsh
 import numpy as np
 import numpy.linalg
 
 from geom.core import *
 import time
+
+from scipy.linalg import eigh
+from scipy.optimize import minimize_scalar
 
 
 class Ellipsoid:
@@ -32,7 +36,7 @@ class Ellipsoid:
         self.info = [self.center.coords, klm, self.angle.coords, self.r]
         self.matrix = self.get_matrix()
 
-    def create_mesh(self):
+    def build_mesh(self):
         gmsh.model.occ.add_sphere(self.center.x, self.center.y, self.center.z, self.r, tag=self.num)
         gmsh.model.occ.dilate([(3, self.num)], self.center.x, self.center.y, self.center.z, 1 / np.sqrt(self.k),
                               1 / np.sqrt(self.l), 1 / np.sqrt(self.m))
@@ -46,25 +50,42 @@ class Ellipsoid:
 
         # yay
 
-    def in_box(self, box: Box, epsilon: float = None):
-        if epsilon is None:
-            epsilon = 0
-        d1 = box.s
-        d2 = box.d
-        for i in range(3):
-            if self.center.coords[i] <= d1.coords[i] - epsilon or self.center.coords[i] >= d2.coords[i] + epsilon:
-                return False
+    def ellipsoid_intersection_test_helper(self,
+                                    Sigma_A: np.matrix,
+                                    Sigma_B: np.ndarray,
+                                    mu_A: np.ndarray,
+                                    mu_B: np.ndarray):
+        lambdas, Phi = eigh(Sigma_A, b=Sigma_B)
+        v_squared = np.dot(Phi.T, mu_A - mu_B) ** 2
+        return lambdas, Phi, v_squared
 
-        for p in box.planes:
-            temp_dot = p.get_projection(self.center)
-            # gmsh.model.occ.add_point(temp_dot.x, temp_dot.y, temp_dot.z)
-            # print(temp_dot.coords)
-            t = d_in_ell(temp_dot, self)
-            if t > 0:
-                t = np.sqrt(t)
-            if t <= epsilon:
-                return False
-        return True
+    def ellipsoid_K_function(self, ss, lambdas, v_squared, tau):
+        ss = np.array(ss).reshape((-1, 1))
+        lambdas = np.array(lambdas).reshape((1, -1))
+        v_squared = np.array(v_squared).reshape((1, -1))
+        return 1. - (1. / tau ** 2) * np.sum(v_squared * ((ss * (1. - ss)) / (1. + ss * (lambdas - 1.))), axis=1)
+
+    def ellipsoid_intersection_test(self,
+                                    Sigma_A: np.matrix,
+                                    Sigma_B: np.matrix,
+                                    mu_A: np.ndarray,
+                                    mu_B: np.ndarray,
+                                    tau: float) -> bool:
+        eigvals, eigvecs = np.linalg.eig(Sigma_B)
+        l = np.diag(eigvals)
+        # print(l)
+        lambdas, Phi, v_squared = self.ellipsoid_intersection_test_helper(Sigma_A, l, mu_A, mu_B)
+        res = minimize_scalar(self.ellipsoid_K_function,
+                              bracket=[0.0, 0.5, 1.0],
+                              args=(lambdas, v_squared, tau))
+        return res.fun[0] >= 0 - 0.000_001
+
+    def intersects(self, ell: 'Ellipsoid') -> bool:
+        return self.ellipsoid_intersection_test(
+            np.linalg.inv(self.matrix),
+            np.linalg.inv(ell.matrix),
+            self.center.coords,
+            ell.center.coords, tau=1)
 
     def print_info(self):
         print(self.num, 'th ell center, klm, angle, r')
@@ -75,10 +96,30 @@ class Ellipsoid:
         A = 1 / self.a ** 2
         B = 1 / self.b ** 2
         C = 1 / self.c ** 2
-        init_mat = np.matrix(f"{A} 0 0; 0 {B} 0; 0 0 {C}")
-        translation_mat = np.matrix(f"1 0 0 {-self.center.x}; 0 1 0 {-self.center.y}; 0 0 1 {-self.center.z}; 0 0 0 1")
-        TRS =get_rotation_matrix(self.angle) @ init_mat @ get_rotation_matrix(self.angle).T
+        init_mat = np.diag([A, B, C])
+        TRS = get_rotation_matrix(self.angle) @ init_mat @ get_rotation_matrix(self.angle).T
         return TRS
+
+    def in_box(self, box: Box) -> bool:
+        # translate dots of plane to ecs, translate ecs so that ellipsoid becomes sphere,
+        # check if sphere collides with plane
+        planes = box.planes
+        planes_in_ecs = [plane_to_ecs(p, self) for p in planes]
+
+        squeeze_mat = np.diag([1 / self.a, 1 / self.b, 1 / self.c])
+
+        planes_squeezed = [plane_squeeze(p, squeeze_mat) for p in planes_in_ecs]
+        doesnt_intersect = [not self.intersects_plane(p) for p in planes_squeezed]
+        return all(doesnt_intersect)
+
+    def intersects_plane(self, plane_translated: Plane):
+        denom = plane_translated.x ** 2 + plane_translated.y ** 2 + plane_translated.z ** 2
+        denom = np.sqrt(denom)
+        dist = abs(plane_translated.d / denom)
+        # print(dist)
+        if dist <= self.r:
+            return True
+        return False
 
 
 def get_rotation_matrix_4(d: Dot) -> np.matrix:
@@ -101,7 +142,7 @@ def get_rotation_matrix_4(d: Dot) -> np.matrix:
 def rot_dot(d: Dot, angle: Dot, reverse: bool = None) -> Dot:
     d2_t = np.array([d.x, d.y, d.z, 1])
     r_mat = get_rotation_matrix_4(angle)
-    d2_t = d2_t @ r_mat
+    d2_t = d2_t @ np.linalg.inv(r_mat)
     d2_t = np.array([d2_t[0, 0], d2_t[0, 1], d2_t[0, 2]])  # this is so shit
     d2_t = Dot(coords=d2_t)
     return d2_t
@@ -126,53 +167,38 @@ def d_in_ell(d: Dot, e: Ellipsoid) -> bool:
         result = False
     return result
 
-def ell_2_ell(E1: Ellipsoid, E2: Ellipsoid) -> bool:
-    ainv = np.linalg.inv(E1.matrix)
-    b = E2.matrix
-    m = ainv @ b
-    eigvals, eigvecs = np.linalg.eig(m)
-    print(eigvals)
-    print()
-    print(eigvecs)
-    v1_i = None
-    v2_i = None
-    for i, e1 in enumerate(eigvals):
-        for j, e2 in enumerate(eigvals):
-            if e1 == e2:
-                v1_i = i
-                v2_i = j
-                break
-            elif (e1 * e2).imag == 0 and e1.imag != 0 and e2.imag != 0:
-                v1_i = i
-                v2_i = j
-                break
-    if any([v1_i is None, v2_i is None]):
-        raise Exception("admissable eigenvalues not found")
-    if eigvals[v1_i] < 0 and eigvals[v2_i] < 0:
-        result = False
-    else:
-        result = True
-    return result
-    # eigvecs = [eigvecs[v1_i], eigvecs[v2_i]]
-    # eigvecs_normalized = []
-    # for v in eigvecs:
-    #     new_v = np.squeeze(np.asarray(v))
-    #     normalized_v = [x / new_v[3] if new_v[3] == 1 else x for x in new_v]
-    #     eigvecs_normalized.append(normalized_v)
-    #
-    # dots_to_check = []
-    # for v in eigvecs_normalized:
-    #     coords = np.array([x.real for x in v])
-    #     # print(coords)
-    #     d = Dot(coords=coords)
-    #     dots_to_check.l(d)
-    #
-    # print('result: ')
-    # print("eigvecs")
-    # print(eigvecs)
-    # print("eigvecs_norm")
-    # print(eigvecs_normalized)
-    # for d in dots_to_check:
-    #     if d_in_ell(d, E1) and d_in_ell(d, E2):
-    #         return True
-    # return False
+
+def plane_to_ecs(p: Plane, e: Ellipsoid) -> Plane:
+    dots = p.dots_list
+    dots_traversed = [Dot(coords=d.coords - e.center.coords) for d in dots]
+    dots_in_ecs = [d_to_ecs(d, e) for d in dots_traversed]
+    return Plane(dots_in_ecs)
+
+
+def plane_squeeze(p: Plane, squeeze_mat: np.ndarray) -> Plane:
+    dots = p.dots_list
+    dots_squeezed = [Dot(coords=d.coords @ squeeze_mat) for d in dots]
+    return Plane(dots_squeezed)
+
+if __name__ == "__main__":
+    import sys
+    filename = 'GFG.msh'
+    gmsh.initialize()
+    e = Ellipsoid(Dot(2.47, 4.01, 3.34), k=1.72, l=1.42, m=1.85, r=1.99, num=1, angle=Dot(-0.89, -0.8, 1.46))
+    e.build_mesh()
+    a = Dot(0, 0, 10)
+    a.build_mesh()
+    b = Dot(0, 10, 0)
+    b.build_mesh()
+    c = Dot(0, 10, 10)
+    c.build_mesh()
+    p = Plane(d=[a, b, c])
+    print(e.intersects_plane(p))
+    gmsh.model.occ.synchronize()
+    gmsh.model.mesh.generate()
+    gmsh.write(filename)
+
+    if 'close' not in sys.argv:
+        gmsh.fltk.run()
+
+    gmsh.finalize()

@@ -2,8 +2,6 @@ import gmsh
 
 from geom.core import *
 import numpy as np
-import numba
-from numba import njit
 import time
 
 
@@ -36,7 +34,7 @@ class Dodecahedron:
         phi = phi / 2
         t = np.sqrt(3)
         self.a = self.r / t / phi * 2
-        self.volume_val = np.power(self.a, 3) * (15 + 7 * np.sqrt(5)) / 4
+        self.volume = np.power(self.a, 3) * (15 + 7 * np.sqrt(5)) / 4
         self.r_m = self.a * phi * phi / 2
 
         for i in range(0, 2):
@@ -132,7 +130,7 @@ class Dodecahedron:
         # volume = gmsh.model.occ.add_volume([surface_loop])
         # self.volume = volume
 
-    def is_overlapping_with(self, dod: 'Dodecahedron'):
+    def intersects(self, dod: 'Dodecahedron'):
         if dist(dod.center, self.center) <= (dod.r_m + self.r_m):
             return True
         elif (self.r + dod.r) < dist(dod.center, self.center):
@@ -171,7 +169,9 @@ class Dodecahedron:
                     return False
         return True
 
-    def in_box(self, d1: Dot, d2: Dot):
+    def in_box(self, box: Box):
+        d1 = box.s
+        d2 = box.d
         for i in range(3):
             if self.center.coords[i] <= d1.coords[i] or self.center.coords[i] >= d2.coords[i]:
                 return False
@@ -203,7 +203,6 @@ def w_interval(dod: Dodecahedron, n: Dot):
     return mini, maxi
 
 
-@njit
 def interval(dod_coords: np.ndarray, n: np.ndarray):
     mini = np.dot(n, dod_coords[0])
     maxi = mini
@@ -272,11 +271,62 @@ def gen_first_dod(first: Dot, second: Dot, angle: Dot, r: float, max_attempts: i
     z = rand_f(first.z + r + epsilon, second.z + r - epsilon)
     center = Dot(x, y, z)
     first_dod = Dodecahedron(center, r, angle, 0)
-    if first_dod.in_box(first, second):
+    if first_dod.in_box(box=Box(first, second)):
         return first_dod
     else:
         return gen_first_dod(first, second, angle, r, max_attempts)
 
+def build_box_loop(num: int, s: Dot, d: Dot) -> None:
+    """
+        :param num:
+        ;id number of this 3d object in gmsh
+        :param s:
+        ;starting dot
+        :param d:
+        ;dot that represents sides length (i know this is stupid af)
+        :return:
+    """
+    line_n = 30 * num
+    point_n = 20 * num
+    surface_n = 12 * num
+    # line_n = 0
+    # point_n = 0
+    # surface_n = 0
+    for i in range(2):
+        for j in range(2):
+            for k in range(2):
+                gmsh.model.occ.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
+                                         s.coords[2] + d.coords[2] * k)
+    queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
+    lines = list()
+
+    for q in queue:
+        for i in range(0, len(q) - 1):
+            gmsh.model.occ.add_line(q[i] + point_n, q[i + 1] + point_n)
+            temp_line = [q[i], q[i + 1]]
+            lines.append(temp_line)
+
+    line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
+    dots = []
+    for loop_i in line_queue:
+        line_loops = []
+
+        for line_i in loop_i:
+            # dots.append(vertices[lines[line_i][1] - 1])
+            temp_j = line_i
+            if temp_j < 0:
+                temp_j = temp_j - line_n
+            else:
+                temp_j = temp_j + line_n
+            line_loops.append(temp_j)
+
+        curve_loop = gmsh.model.occ. \
+            add_curve_loop(line_loops)
+        surface = gmsh.model.occ.add_plane_surface([curve_loop])
+
+    surface_loop = \
+        gmsh.model.occ.add_surface_loop(range(1 + surface_n, 7 + surface_n))
+    return surface_loop
 
 def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
             r_min: float = None, r_max: float = None, max_time: float = None, max_time_per_1: float = None,
@@ -310,7 +360,7 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
 
     n = 1
     previous = 0
-
+    total_volume_val = 0
     while attempts < max_attempts and total_volume_val < target_val:
         temp_dot = Dot(rand_f(0, second.x), rand_f(0, second.y), rand_f(0, second.z))
         temp_angle = Dot(rand_f(0, np.pi/4),rand_f(0, np.pi/4),rand_f(0, np.pi/4))
@@ -319,16 +369,16 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
             r = rand_f(r_min, r_max)
 
         temp_dod = Dodecahedron(temp_dot, r, temp_angle, n)
-        print(temp_dod.center.coords)
+        # print(temp_dod.center.coords)
 
         intersects = False
 
-        if temp_dod.in_box(first, second) is False:
+        if temp_dod.in_box(Box(first, second)) is False:
             intersects = True
 
         if not intersects:
             for d in dods:
-                if temp_dod.is_overlapping_with(d):
+                if temp_dod.intersects(d):
                     intersects = True
                     break
 
@@ -342,7 +392,7 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
         temp_dod.build_mesh()
         surfaces.append(temp_dod.surface_loop)
 
-        total_volume_val = total_volume_val + temp_dod.volume_val
+        total_volume_val = total_volume_val + temp_dod.volume
 
         dods.append(temp_dod)
         n = n + 1
@@ -363,6 +413,7 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
                 break
 
     box_loop = build_box_loop(n, first, second)
+    print(box_loop)
 
     tags = [box_loop]
     tags.extend(surfaces)
@@ -373,5 +424,8 @@ def gen_dod_box(porosity: float, first: Dot, second: Dot, r: float = None,
 
 if __name__ == '__main__':
     gmsh.initialize()
-    gen_dod_box(0.4, Dot(0, 0, 0), Dot(10, 10, 10), r_min=0.5, r_max=2, max_attempts=100000)
+    gen_dod_box(0.2, Dot(0, 0, 0), Dot(10, 10, 10), r_min=0.5, r_max=2, max_attempts=100000)
+    gmsh.model.occ.synchronize()
+    gmsh.model.mesh.generate()
+    gmsh.fltk.run()
     gmsh.finalize()

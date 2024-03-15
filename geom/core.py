@@ -2,7 +2,7 @@ import numpy as np
 import gmsh
 import random
 from scipy.spatial.transform import Rotation as rot
-from typing import Union
+
 
 class Dot:
     def __init__(self, x: float = None, y: float = None, z: float = None,
@@ -15,9 +15,9 @@ class Dot:
         elif coords is not None:
             self.check_vector(coords)
             self._coords = np.squeeze(np.asarray(coords))[:3]
-            self._x = coords[0]
-            self._y = coords[1]
-            self._z = coords[2]
+            self._x = self._coords[0]
+            self._y = self._coords[1]
+            self._z = self._coords[2]
 
     def check_vector(self, coords: np.ndarray) -> None:
         if not isinstance(coords, np.ndarray):
@@ -120,52 +120,11 @@ def dist(d1: Dot, d2: Dot, is_v: bool = None):
 
 
 def get_rotation_matrix(angle: Dot):
-    # print(angle.coords)
     r = rot.from_euler('xyz', angle.coords)
-    # print(r.as_matrix())
     return r.as_matrix()
 
 
-def build_box_loop(num: int, s: Dot, d: Dot):
-    line_n = 30 * num
-    point_n = 20 * num
-    surface_n = 12 * num
-    for i in range(2):
-        for j in range(2):
-            for k in range(2):
-                gmsh.model.occ.add_point(s.coords[0] + d.coords[0] * i, s.coords[1] + d.coords[1] * j,
-                                         s.coords[2] + d.coords[2] * k)
-    queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]
-    lines = list()
 
-    for q in queue:
-        for i in range(0, len(q) - 1):
-            gmsh.model.occ.add_line(q[i] + point_n, q[i + 1] + point_n)
-            temp_line = [q[i], q[i + 1]]
-            lines.append(temp_line)
-
-    line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
-
-    for loop_i in line_queue:
-        line_loops = []
-
-        for line_i in loop_i:
-            # dots.append(self.vertices[self.lines[line_i][1] - 1])
-            temp_j = line_i
-            if temp_j < 0:
-                temp_j = temp_j - line_n
-            else:
-                temp_j = temp_j + line_n
-            line_loops.append(temp_j)
-
-        curve_loop =\
-            gmsh.model.\
-                occ.add_curve_loop(line_loops)
-        surface = gmsh.model.occ.add_plane_surface([curve_loop])
-
-    surface_loop =\
-        gmsh.model.occ.add_surface_loop(range(1 + surface_n, 7 + surface_n))
-    return surface_loop
 
 
 class Line:
@@ -187,6 +146,8 @@ class Box:
         self.s = s
         self.d = d
         self.c = Dot(coords=(s.coords + d.coords) / 2)   # center
+        self.volume = np.prod(d.coords - s.coords)
+
         dots = list()
         for i in range(2):
             for j in range(2):
@@ -195,10 +156,9 @@ class Box:
                                              s.coords[1] + (d.coords[1] - s.coords[1]) * j,
                                              s.coords[2] + (d.coords[2] - s.coords[2]) * k)
                     dots.append(temp_dot)
-                    gmsh.model.occ.add_point(s.coords[0] + (d.coords[0] - s.coords[0]) * i,
-                                             s.coords[1] + (d.coords[1] - s.coords[1]) * j,
-                                             s.coords[2] + (d.coords[2] - s.coords[2]) * k)
-        queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]   # queue of dots to connect into lines
+                    # gmsh.model.occ.add_point(s.coords[0] + (d.coords[0] - s.coords[0]) * i,
+                    #                          s.coords[1] + (d.coords[1] - s.coords[1]) * j,
+                    #                          s.coords[2] + (d.coords[2] - s.coords[2]) * k)
         plane_nums = [[1, 2, 6, 5], [2, 4, 3, 1], [2, 4, 8, 6], [6, 8, 7, 5], [5, 7, 3, 1], [8, 4, 3, 7]]
         planes = list()
         # x: 5786, 1342 plane_nums[3], plane_nums[1]
@@ -213,16 +173,25 @@ class Box:
 
         self.planes = planes
 
-        lines = list()
 
+
+    def build_mesh(self, n):
+        line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
+        s = self.s
+        d = self.d
+        for i in range(2):
+            for j in range(2):
+                for k in range(2):
+                    gmsh.model.occ.add_point(s.coords[0] + (d.coords[0] - s.coords[0]) * i,
+                                             s.coords[1] + (d.coords[1] - s.coords[1]) * j,
+                                             s.coords[2] + (d.coords[2] - s.coords[2]) * k)
+        lines = list()
+        queue = [[1, 2, 6, 5, 1], [2, 4, 3, 1], [6, 8, 4], [5, 7, 8], [7, 3]]  # queue of dots to connect into lines
         for q in queue:
             for i in range(0, len(q) - 1):
                 gmsh.model.occ.add_line(q[i], q[i + 1])
                 temp_line = [q[i], q[i + 1]]
                 lines.append(temp_line)
-
-    def build_mesh(self, n):
-        line_queue = [[1, 2, 3, 4], [8, 9, -5, 2], [10, 11, -8, 3], [6, -12, 11, 9], [10, 12, 7, -4], [1, 5, 6, 7]]
 
         for loop_i in line_queue:
             line_loops = []
@@ -259,17 +228,21 @@ class Plane:
             self.sign = np.dot(self.normal, c.coords)
         else:
             self.sign = 0
+        self.equation = np.append(self.normal, d)
+
+        self.x = self.equation[0]
+        self.y = self.equation[1]
+        self.z = self.equation[2]
 
     def get_projection(self, dot: Dot):
-        # print(dot.coords)
         d = np.dot(dot.coords - self.dots_list[0].coords, self.normal)
         if d > 0:
             q_c = dot.coords - d * self.normal
         else:
             q_c = dot.coords + d * self.normal
         q = Dot(coords=q_c)
-        # print(q.coords)
         return q
+
 
 if __name__ == '__main__':
     d1 = Dot(1, 2, 3)
